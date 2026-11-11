@@ -42,7 +42,6 @@ import './overlays/context-menu.js';
 import './overlays/palette.js';
 import './pages/settings.js';
 import './pages/auth.js';
-import './pages/design-system.js';
 import './actions/actions.js';
 import './actions/events.js';
 import './actions/keyboard.js';
@@ -53,10 +52,11 @@ import './features/archive.js';
 import './actions/teams.js';
 import './actions/subtasks.js';
 import './actions/archive.js';
+import './actions/planning.js';
 import './actions/session.js';
 import { S, D } from './core/store.js';
 import { A } from './actions/actions.js';
-import { render, go } from './shell/render.js';
+import { render, go, onUrlChange } from './shell/render.js';
 import { boot } from './data/backend.js';
 import { urlIntent } from './data/supabase.js';
 
@@ -70,7 +70,9 @@ import { urlIntent } from './data/supabase.js';
     document.body.appendChild(l);
   }
   // The hash may name a starting screen (#signup, #inbox…); auth links carry tokens there instead.
-  const h = urlIntent.isAuthLink ? '' : (location.hash || '').slice(1);
+  const h = urlIntent.isAuthLink ? '' : location.hash || '';
+  window.addEventListener('popstate', onUrlChange);
+  window.addEventListener('hashchange', onUrlChange);
   void boot(h);
 })();
 

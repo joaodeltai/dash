@@ -3,16 +3,27 @@ import { TODAY, diffD, esc, parse, relDate } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { LB, PR, PSTAT, ST } from '../core/constants.js';
 import { D, mem, pColor } from '../core/store.js';
+import { imageState } from './file-urls.js';
 
 export function av(id, cls = '', tip = true) {
   const m = mem(id);
   if (!m) return `<span class="av empty ${cls}" ${tip ? 'data-tip="Unassigned"' : ''}>${ic('user', 11)}</span>`;
-  const ini = m.name
-    .split(' ')
-    .map(x => x[0])
-    .join('')
-    .slice(0, 2);
-  return `<span class="av ${cls}" style="--c:${m.c}" ${tip ? `data-tip="${esc(m.name)}"` : ''} aria-label="${esc(m.name)}">${ini}</span>`;
+  const ini = esc(
+    (m.name || '?')
+      .split(' ')
+      .map(x => x[0] || '')
+      .join('')
+      .slice(0, 2),
+  );
+  return `<span class="av ${cls}" style="--c:${esc(m.c)}" ${tip ? `data-tip="${esc(m.name)}"` : ''} aria-label="${esc(m.name)}">${ini}</span>`;
+}
+/* Authors (of comments, activity, files, notifications) can leave the workspace; the database then clears the
+   reference. These two helpers are the single way to show "who did this", with a neutral fallback. */
+export const FORMER_MEMBER = 'Former member';
+export const authorName = id => mem(id)?.name || FORMER_MEMBER;
+export function authorAv(id, cls = '', tip = true) {
+  if (mem(id)) return av(id, cls, tip);
+  return `<span class="av empty ${cls}" ${tip ? `data-tip="${FORMER_MEMBER}"` : ''} aria-label="${FORMER_MEMBER}">${ic('user', 11)}</span>`;
 }
 export function avStack(ids, max = 4, cls = 'sm') {
   const v = ids.slice(0, max);
@@ -97,9 +108,16 @@ export function fsize(b) {
   if (b < 1048576) return Math.round(b / 1024) + ' KB';
   return (b / 1048576).toFixed(1) + ' MB';
 }
+const THUMB_MAX_BYTES = 8 * 1048576;
 export function filePrev(f) {
   const t = FT[f.type] || FT.other;
   let art;
+  /* Real thumbnail for stored images (signed URL, loaded on demand); very large files keep the placeholder. */
+  const im = f.type === 'img' && f.path && (f.bytes || 0) <= THUMB_MAX_BYTES ? imageState(f.path) : null;
+  if (im?.state === 'ready') {
+    const ext = (f.name.split('.').pop() || '').slice(0, 4);
+    return `<div class="fprev"><img class="fthumb" data-fpath="${esc(f.path)}" src="${esc(im.url)}" alt="" loading="lazy" decoding="async"><span class="ext" style="--c:${t.c}">${esc(ext)}</span></div>`;
+  }
   if (f.type === 'img')
     art = `<div class="art" style="padding:0;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,${t.c} 35%,var(--surface)),color-mix(in srgb,${t.c} 10%,var(--surface)))"><svg viewBox="0 0 100 60" preserveAspectRatio="none" style="width:100%;height:100%"><path d="M0 60 L30 28 L52 46 L70 32 L100 58 L100 60Z" fill="color-mix(in srgb,${t.c} 45%,var(--surface))"/><circle cx="76" cy="16" r="7" fill="color-mix(in srgb,${t.c} 30%,var(--surface))"/></svg></div>`;
   else if (f.type === 'sheet') art = `<div class="art" style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px">${'<i></i>'.repeat(20)}</div>`;

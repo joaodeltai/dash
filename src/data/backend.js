@@ -2,22 +2,18 @@
    BACKEND: session lifecycle, workspace loading, realtime, file storage.
    This is the only module (besides sync.js) that talks to Supabase.
    ===================================================================== */
-import { AUTH_PROVIDERS, SUPABASE_KEY, SUPABASE_URL, isConfigured, sb, urlIntent } from './supabase.js';
+import { AUTH_PROVIDERS, MAX_FILE_BYTES, SUPABASE_KEY, SUPABASE_URL, ctx, isConfigured, sb, urlIntent } from './supabase.js';
 import { TABLE, emptyData, flatten, fmtBytes, hydrate, keyOf, newId, stable } from './mappers.js';
 import { createSync } from './sync.js';
 import { DEFAULT_PREFS, S, cachePrefs, setPersist, task } from '../core/store.js';
 import { fileType } from '../ui/helpers.js';
 import { toast } from '../ui/toast.js';
-import { ROUTE_NAMES, render } from '../shell/render.js';
+import { openUrl, render } from '../shell/render.js';
 
-export { AUTH_PROVIDERS, isConfigured };
-export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+export { AUTH_PROVIDERS, MAX_FILE_BYTES, ctx, isConfigured };
 const WS_KEY = 'dash.ws';
 const ACTIVITY_LIMIT = 1000;
 const NOTIF_LIMIT = 500;
-
-/* Who is signed in and which workspace is open. */
-export const ctx = { userId: null, email: null, wsId: null, meId: null, workspaces: [], profile: null };
 
 export class BackendError extends Error {
   constructor(message, { code, status, kind } = {}) {
@@ -141,7 +137,8 @@ export async function boot(initialRoute) {
       S.ui.errors = { login: urlIntent.error.replace(/\+/g, ' ') };
       return showAuth('login');
     }
-    if (!data.session) return showAuth(['login', 'signup', 'forgot'].includes(initialRoute) ? initialRoute : 'login');
+    const asked = String(initialRoute || '').replace(/^#\/?/, '');
+    if (!data.session) return showAuth(['login', 'signup', 'forgot'].includes(asked) ? asked : 'login');
     if (urlIntent.recovery) {
       setIdentity(data.session);
       S.ui.af = { email: ctx.email, name: '' };
@@ -202,7 +199,8 @@ export function enterSession(session, initialRoute) {
       /* storage blocked: fall back to the first workspace */
     }
     const target = ctx.workspaces.find(w => w.id === stored) || ctx.workspaces[0];
-    await openWorkspace(target.id, { route: initialRoute });
+    // a deep link opened while signed out is honoured once the person is in
+    await openWorkspace(target.id, { route: initialRoute ?? location.hash });
   })().finally(() => {
     entering = null;
   });
@@ -241,6 +239,11 @@ function teardown() {
     route: 'home',
     params: {},
   });
+  try {
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch {
+    /* history unavailable */
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -281,7 +284,17 @@ async function fetchRows(wsId) {
     task_favorites,
     project_favorites,
   ] = await Promise.all([
-    sb.from('workspaces').select('*').eq('id', wsId).single().then(unwrap),
+    sb
+      .from('workspaces')
+      .select('*')
+      .eq('id', wsId)
+      .maybeSingle()
+      .then(unwrap)
+      .then(w => {
+        // no row = the workspace is gone or this account was removed from it
+        if (!w) throw new BackendError('You are no longer a member of this workspace.', { code: 'NOT_A_MEMBER', kind: 'rejected' });
+        return w;
+      }),
     sb.from('profiles').select('*').eq('id', ctx.userId).single().then(unwrap),
     fetchAll('members', inWs, ['created_at', 'id']),
     fetchAll('teams', inWs, ['created_at', 'id']),
@@ -377,9 +390,10 @@ export async function openWorkspace(wsId, { route } = {}) {
     expanded: {},
   });
   S.ui.sel.clear();
-  S.ui.route = route && ROUTE_NAMES[route] ? route : S.prefs.home || 'home';
+  S.ui.route = 'home';
   S.ui.params = {};
-  render();
+  const notice = openUrl(route || '');
+  if (notice) toast(notice, { kind: 'info', ms: 6000 });
 }
 
 /* Re-reads the workspace from the database. Skipped while local changes are waiting to be saved, unless forced
@@ -485,16 +499,19 @@ let rtTimer = null;
 function subscribe(wsId) {
   unsubscribe();
   channel = sb.channel('ws:' + wsId);
-  for (const table of RT_TABLES)
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table, filter: table === 'workspaces' ? `id=eq.${wsId}` : `workspace_id=eq.${wsId}` },
-      payload => {
-        rtQueue.push({ table, payload });
-        clearTimeout(rtTimer);
-        rtTimer = setTimeout(drainRealtime, 700);
-      },
-    );
+  const queue = table => payload => {
+    rtQueue.push({ table, payload });
+    clearTimeout(rtTimer);
+    rtTimer = setTimeout(drainRealtime, 700);
+  };
+  for (const table of RT_TABLES) {
+    const filter = table === 'workspaces' ? `id=eq.${wsId}` : `workspace_id=eq.${wsId}`;
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter }, queue(table));
+    channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter }, queue(table));
+    // A DELETE event only carries the primary key, so it cannot be filtered by workspace. Keys we do not know
+    // (other workspaces, or our own deletes) are ignored in isEcho().
+    channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table }, queue(table));
+  }
   channel.subscribe();
 }
 function unsubscribe() {
@@ -562,7 +579,11 @@ export async function signIn(email, password) {
 
 export async function signUp(name, email, password) {
   const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: redirectTo() } });
-  if (error) throw authFail(error);
+  if (error) {
+    if (error.code === 'user_already_exists' || /already registered/i.test(error.message || ''))
+      throw new BackendError('An account with this email already exists. Sign in instead.', { code: 'USER_EXISTS', kind: 'rejected' });
+    throw authFail(error);
+  }
   // With email confirmation on, Supabase answers a sign-up for an existing address with an empty identity list.
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
     throw new BackendError('An account with this email already exists. Sign in instead.', { code: 'USER_EXISTS', kind: 'rejected' });

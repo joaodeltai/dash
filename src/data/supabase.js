@@ -1,5 +1,11 @@
-/* ---------- Supabase client ---------- */
+/* ---------- Supabase client ----------
+   Leaf module: it imports nothing from the app, so any page can read `ctx` and the constants below
+   without creating an import cycle through backend.js. */
 import { createClient } from '@supabase/supabase-js';
+
+/* Who is signed in and which workspace is open (filled in by backend.js). */
+export const ctx = { userId: null, email: null, wsId: null, meId: null, workspaces: [], profile: null };
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
 export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';

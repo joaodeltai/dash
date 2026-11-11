@@ -253,6 +253,9 @@
   margin: 4px 0;
   padding-left: 20px;
 }
+.rte-body h1,
+.rte-body h2,
+.rte-body h3,
 .rte-body h4 {
   font-size: var(--fs-md);
   margin: 10px 0 4px;

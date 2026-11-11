@@ -2,14 +2,23 @@
 import { dOff } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { LABELS, PCOLORS, PRIOS, STATUSES } from '../core/constants.js';
-import { S, allTasks, task } from '../core/store.js';
+import { D, S, allTasks } from '../core/store.js';
 import { av, avStack, empty, lbl, pStatus, prPill, progBar, stPill } from '../ui/helpers.js';
 import { sItem } from '../shell/layout.js';
 import { sk, skRows } from '../shell/skeletons.js';
 import { miniRow } from '../components/task-list.js';
 import { kcard } from '../views/board.js';
 
+/* Internal galleries, registered only in development builds (see shell/layout.js). They read whatever
+   workspace is open and never run destructive actions, so they work with real or empty data. */
+const sampleTask = () => allTasks()[0] || null;
+const sampleMembers = () =>
+  D()
+    .members.slice(0, 6)
+    .map(m => m.id);
 export function pageSystem() {
+  const st = sampleTask();
+  const ms = sampleMembers();
   const tok = (n, v) => `<div class="ds-tok"><div class="c" style="--c:var(${v})"></div><div class="n"><span>${n}</span><code>${v}</code></div></div>`;
   const B = (cls, lab, st = '') => `<button class="btn ${cls} ${st}" ${st === 'dis' ? 'disabled' : ''}>${lab}</button>`;
   const states = ['', 'state-hover', 'state-active', 'state-focus', 'dis', 'is-loading'];
@@ -99,7 +108,7 @@ export function pageSystem() {
         ['Text', `<input class="input" placeholder="Task name" id="ds-1">`],
         ['Focus', `<input class="input" value="Homepage wireframes" style="border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)" id="ds-2">`],
         ['Error', `<input class="input is-error" value="alex@" id="ds-3"><span class="err">${ic('circle-alert', 12)}Enter a valid email address</span>`],
-        ['Disabled', `<input class="input" value="hello@gr8rstudio.com" disabled id="ds-4">`],
+        ['Disabled', `<input class="input" value="name@company.com" disabled id="ds-4">`],
         ['Search', `<div class="inwrap">${ic('search', 13)}<input class="input" placeholder="Search tasks" id="ds-5"><span class="kbd">/</span></div>`],
         ['Select', `<select class="select" id="ds-6"><option>In Progress</option><option>Review</option></select>`],
         [
@@ -126,8 +135,8 @@ export function pageSystem() {
       <div class="tabs">${['Overview', 'Board', 'List', 'Table'].map((t, i) => `<button class="tab ${i === 1 ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="row"><div class="seg"><button class="on">${ic('layout-grid', 13)}Grid</button><button>${ic('list', 13)}List</button><button>${ic('table-2', 13)}Table</button></div><span class="chip">${ic('circle-dot', 12)}<b>Status</b> is <span>In Progress</span><span class="ibtn">${ic('x', 12)}</span></span></div></div></div></div>
     <div class="ds-sec"><h2>Data display</h2><div class="grid2" style="grid-template-columns:300px 1fr">
-      <div style="background:var(--sunken);padding:10px;border-radius:var(--r-lg)">${kcard(task('t3') || allTasks()[0])}</div>
-      <div class="col" style="gap:12px"><div class="ds-row"><span class="lab">Avatar</span>${['m1', 'm2', 'm3'].map(i => av(i, 'sm')).join('')}${av('m4')}${av('m5', 'md')}${av('m6', 'lg')}${av(null)}${avStack(['m1', 'm2', 'm3', 'm4', 'm5', 'm6'], 4, 'md')}</div>
+      <div style="background:var(--sunken);padding:10px;border-radius:var(--r-lg)">${st ? kcard(st) : '<p class="faint" style="font-size:12.5px;margin:6px">Create a task to preview a card.</p>'}</div>
+      <div class="col" style="gap:12px"><div class="ds-row"><span class="lab">Avatar</span>${ms.map(i => av(i, 'sm')).join('')}${av(ms[0])}${av(ms[0], 'md')}${av(ms[0], 'lg')}${av(null)}${avStack(ms, 4, 'md')}</div>
       <div class="ds-row"><span class="lab">Badge</span><span class="badge">Default</span><span class="badge accent">Accent</span><span class="badge green"><span class="dot"></span>Active</span><span class="badge amber"><span class="dot"></span>Invited</span><span class="badge red">3 overdue</span>${pStatus('active')}${pStatus('risk')}</div>
       <div class="ds-row"><span class="lab">Progress</span><span style="width:200px;display:flex">${progBar(64)}</span><span style="width:120px;display:flex">${progBar(100, 'green')}</span><span style="width:120px;display:flex">${progBar(30, 'red')}</span></div>
       <div class="panel" style="overflow:hidden">${allTasks()
@@ -136,7 +145,7 @@ export function pageSystem() {
         .join('')}</div></div></div></div>
     <div class="ds-sec"><h2>Feedback</h2>
       <div class="col" style="gap:8px;margin-bottom:12px"><div class="alert info">${ic('info', 15)}<span><b>Heads up.</b> Timeline dependencies are shown as dashed when out of order.</span></div><div class="alert ok">${ic('circle-check', 15)}<span>Project archived. <button class="link">Undo</button></span></div><div class="alert warn">${ic('triangle-alert', 15)}<span>3 tasks due this week are not started.</span></div><div class="alert danger">${ic('circle-alert', 15)}<span>Your changes couldn't be saved. <button class="link">Try again</button></span></div></div>
-      <div class="ds-row"><span class="lab">Triggers</span><button class="btn btn-secondary" data-a="demoToast" data-v="ok">Toast</button><button class="btn btn-secondary" data-a="demoToast" data-v="err">Error toast</button><button class="btn btn-secondary" data-tip="Tooltips pair with icon buttons">Tooltip</button><button class="btn btn-secondary" data-a="newTask">Modal</button><button class="btn btn-secondary" data-a="openTask" data-id="t3">Drawer</button><button class="btn btn-secondary" data-a="demoConfirm">Confirmation</button><button class="btn btn-secondary" data-a="openPalette">Command menu</button></div></div>
+      <div class="ds-row"><span class="lab">Triggers</span><button class="btn btn-secondary" data-a="demoToast" data-v="ok">Toast</button><button class="btn btn-secondary" data-a="demoToast" data-v="err">Error toast</button><button class="btn btn-secondary" data-tip="Tooltips pair with icon buttons">Tooltip</button><button class="btn btn-secondary" data-a="newTask">Modal</button>${st ? `<button class="btn btn-secondary" data-a="openTask" data-id="${st.id}">Drawer</button>` : ''}<button class="btn btn-secondary" data-a="demoConfirm">Confirmation</button><button class="btn btn-secondary" data-a="openPalette">Command menu</button></div></div>
     <div class="ds-sec"><h2>Iconography <span>Lucide · 1.8px stroke · 12–18px</span></h2><div class="panel" style="padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px;color:var(--text-2)">${['house', 'inbox', 'circle-check', 'star', 'search', 'bell', 'folder-kanban', 'list-checks', 'calendar', 'chart-gantt', 'users', 'activity', 'settings', 'plus', 'list-filter', 'arrow-up-down', 'rows-3', 'share-2', 'ellipsis', 'paperclip', 'message-square', 'tag', 'link', 'copy', 'pencil', 'trash-2', 'archive', 'upload', 'repeat', 'timer', 'git-branch', 'lock', 'eye', 'at-sign', 'sun', 'moon'].map(i => `<span style="height:36px;display:grid;place-items:center" title="${i}">${ic(i, 17)}</span>`).join('')}</div></div>
   </div>`;
 }
@@ -145,7 +154,7 @@ export function pageSystem() {
 export function pageStates() {
   const card = (cap, icon, inner) => `<div class="panel"><div class="cap">${ic(icon, 13)}${cap}</div>${inner}</div>`;
   return `<div class="page wide" style="max-width:1240px">
-    <div class="ph"><div><h1>System states</h1><p>Empty, loading, error, and confirmation states used throughout Gr8r.</p></div><div class="acts"><button class="btn btn-secondary" data-a="toggleOffline">${ic(S.ui.offline ? 'wifi' : 'wifi-off', 14)}${S.ui.offline ? 'Go back online' : 'Simulate offline'}</button></div></div>
+    <div class="ph"><div><h1>System states</h1><p>Empty, loading, error, and confirmation states used throughout Gr8r.</p></div></div>
     <h2 class="sec" style="margin:8px 0 10px">Empty states</h2>
     <div class="states-grid">
       ${card('No projects', 'folder-kanban', empty('folder-kanban', 'No projects yet', 'Create your first project to start organizing your work.', `<button class="btn btn-primary btn-sm" data-a="newProject">${ic('plus', 14)}Create project</button>`))}
@@ -165,12 +174,12 @@ export function pageStates() {
       ${card('Network error', 'wifi-off', `<div class="empty-state err sm"><div class="glyph">${ic('wifi-off', 20)}</div><h3 class="es-h">You're offline</h3><p>Check your connection. We'll sync your changes when you're back.</p><button class="btn btn-secondary btn-sm" data-a="demoToast" data-v="retry">${ic('refresh-cw', 13)}Try again</button></div>`)}
       ${card('Failed to load', 'cloud-alert', `<div class="empty-state err sm"><div class="glyph">${ic('cloud-alert', 20)}</div><h3 class="es-h">Something went wrong.</h3><p>This view failed to load. Your data is safe.</p><button class="btn btn-secondary btn-sm" data-a="demoToast" data-v="retry">Try again</button></div>`)}
       ${card('Failed to save', 'circle-alert', `<div style="padding:18px" class="col"><div class="alert danger" style="margin-bottom:10px">${ic('circle-alert', 15)}<div><b>Your changes couldn't be saved.</b><div class="muted">The server didn't respond in time.</div></div></div><button class="btn btn-secondary btn-sm" style="align-self:flex-start" data-a="demoToast" data-v="err">Show as toast</button></div>`)}
-      ${card('Permission denied', 'lock', `<div class="empty-state sm"><div class="glyph">${ic('lock', 20)}</div><h3 class="es-h">You don't have access</h3><p>Customer Portal is private. Request access from Marcus Lee.</p><button class="btn btn-secondary btn-sm" data-a="go" data-r="project" data-id="p6">Open example</button></div>`)}
+      ${card('Permission denied', 'lock', `<div class="empty-state sm"><div class="glyph">${ic('lock', 20)}</div><h3 class="es-h">You don't have access</h3><p>This project is private. Ask the project lead to add you.</p></div>`)}
       ${card('Page not found', 'file-question', `<div class="empty-state sm"><div class="glyph">${ic('file-question', 20)}</div><h3 class="es-h">Page not found</h3><p>The page was moved, deleted, or never existed.</p><button class="btn btn-secondary btn-sm" data-a="go" data-r="nowhere">Open example</button></div>`)}
-      ${card('Form validation', 'text-cursor-input', `<div style="padding:18px" class="col"><div class="field"><label class="label" for="st-e">Email</label><input class="input is-error" id="st-e" value="hello@gr8rstudio" aria-invalid="true"><span class="err">${ic('circle-alert', 12)}Enter a valid email, like name@company.com</span></div></div>`)}
+      ${card('Form validation', 'text-cursor-input', `<div style="padding:18px" class="col"><div class="field"><label class="label" for="st-e">Email</label><input class="input is-error" id="st-e" value="name@company" aria-invalid="true"><span class="err">${ic('circle-alert', 12)}Enter a valid email, like name@company.com</span></div></div>`)}
     </div>
     <h2 class="sec" style="margin:28px 0 10px">Confirmation dialogs</h2>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" data-a="delProject" data-id="p5" data-demo="1">${ic('trash-2', 14)}Delete project</button><button class="btn btn-secondary" data-a="delTask" data-id="t10" data-demo="1">${ic('trash-2', 14)}Delete task</button><button class="btn btn-secondary" data-a="removeMember" data-id="m8" data-demo="1">${ic('user-minus', 14)}Remove member</button><button class="btn btn-secondary" data-a="archiveProject" data-id="p7" data-demo="1">${ic('archive', 14)}Archive project</button></div>
-    <p class="faint" style="font-size:12.5px;margin-top:8px">These open the real dialogs. Confirming performs the action on demo data; use Help → Reset demo data to restore.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" data-a="demoConfirm">${ic('archive', 14)}Confirmation dialog</button></div>
+    <p class="faint" style="font-size:12.5px;margin-top:8px">A preview only: confirming does not change any data.</p>
   </div>`;
 }

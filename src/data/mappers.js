@@ -59,7 +59,13 @@ const str = (v, max, fallback = '') => {
   return (s || fallback).slice(0, max);
 };
 const oneOf = (v, list, fallback) => (list.includes(v) ? v : fallback);
-const dateOrNull = v => (typeof v === 'string' && DATE_RE.test(v) ? v : null);
+/* A calendar date the database will accept: well-formed and real (2026-02-30 is not). */
+const dateOrNull = v => {
+  if (typeof v !== 'string' || !DATE_RE.test(v)) return null;
+  const [y, m, d] = v.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? v : null;
+};
 const toIso = ms => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
 const toMs = iso => {
   if (!iso) return null;
@@ -343,24 +349,11 @@ export function normalize(d) {
     if (t.archived && !t.archivedAt) t.archivedAt = Date.now();
   }
 
-  // files: one record per file. `d.files` is the source of truth; task.attachments is derived from it.
+  // files: one record per file. `d.files` is the only source of truth; task.attachments is derived from it
+  // below, so removing a record from `d.files` is all it takes to detach and delete a file.
   d.files = d.files.filter(f => projectIds.has(f.project));
-  const fileById = new Map(d.files.map(f => [f.id, f]));
-  const seenAtt = new Set();
-  for (const t of d.tasks) {
-    for (const a of t.attachments) {
-      if (!a.id || seenAtt.has(a.id) || (fileById.has(a.id) && fileById.get(a.id).task !== t.id)) a.id = newId();
-      seenAtt.add(a.id);
-      if (!fileById.has(a.id)) {
-        const f = { ...a, project: t.project, task: t.id };
-        d.files.unshift(f);
-        fileById.set(f.id, f);
-      }
-    }
-  }
   for (const f of d.files) {
     if (f.task && !taskIds.has(f.task)) f.task = null;
-    if (f.by && !hasMember(f.by)) f.by = null;
     if (typeof f.bytes !== 'number') f.bytes = parseBytes(f.size);
     if (f.task) {
       const t = d.tasks.find(x => x.id === f.task);
@@ -380,7 +373,6 @@ export function normalize(d) {
 
   d.comments = d.comments.filter(c => taskIds.has(c.task));
   for (const c of d.comments) {
-    if (c.by && !hasMember(c.by)) c.by = null;
     if (!c.re || typeof c.re !== 'object') c.re = {};
     for (const e of Object.keys(c.re)) {
       c.re[e] = (c.re[e] || []).filter(hasMember);
@@ -388,10 +380,10 @@ export function normalize(d) {
     }
   }
   d.activity = d.activity.filter(a => (!a.task || taskIds.has(a.task)) && (!a.project || projectIds.has(a.project)));
-  for (const a of d.activity) if (a.by && !hasMember(a.by)) a.by = null;
+  // Authorship (comment, activity, notification, file) is left untouched when the author is gone: the database
+  // clears it itself when the member row is deleted, and the UI shows such authors as former members.
   d.notifs = d.notifs.filter(n => (!n.task || taskIds.has(n.task)) && (!n.project || projectIds.has(n.project)));
   for (const n of d.notifs) {
-    if (n.by && !hasMember(n.by)) n.by = null;
     if (n.read && !n.readAt) n.readAt = Date.now();
     if (!n.read) delete n.readAt;
   }

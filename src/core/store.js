@@ -115,12 +115,20 @@ export const mem = id => D().members.find(m => m.id === id);
 export const proj = id => D().projects.find(p => p.id === id);
 export const task = id => D().tasks.find(t => t.id === id);
 export const pColor = p => PCOLORS[p?.color] || PCOLORS.slate;
+/* ---------- roles ----------
+   The database enforces permissions (RLS); these only decide what the interface offers. */
+export const myRole = () => me()?.role || 'Guest';
+export const isAdmin = () => ['Owner', 'Admin'].includes(myRole());
+export const canCreate = () => myRole() !== 'Guest';
+/* Owners and admins manage other members; nobody manages the owner or themselves. */
+export const canManage = m => !!m && isAdmin() && m.role !== 'Owner' && m.id !== D().me;
 export const visibleProjects = () =>
   D()
     .projOrder.map(proj)
     .filter(Boolean)
     .filter(p => !p.archived);
-export const canSee = p => !p.private || p.members.includes(D().me);
+/* Mirrors the database rule: a private project is for its members; the workspace owner sees every project. */
+export const canSee = p => !!p && (!p.private || p.members.includes(D().me) || me()?.role === 'Owner');
 export const tasksOf = pid => D().tasks.filter(t => t.project === pid && !t.archived);
 export const allTasks = () => D().tasks.filter(t => !t.archived && canSee(proj(t.project)));
 export const isOver = t => t.due && t.status !== 'done' && diffD(parse(t.due), TODAY) < 0;

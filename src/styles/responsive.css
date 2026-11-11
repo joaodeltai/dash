@@ -222,8 +222,12 @@
     grid-auto-rows: minmax(72px, 1fr);
   }
   .cev .trunc,
+  .cev .num,
   .cev .av {
     display: none;
+  }
+  .cday .add {
+    display: none; /* the day number opens a menu with Add task / Add event instead */
   }
   .cev {
     height: 8px;

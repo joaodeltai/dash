@@ -5,9 +5,10 @@ import { D, S, proj, save, task } from '../core/store.js';
 import { mutate, toast } from '../ui/toast.js';
 import { fxSet, render } from '../shell/render.js';
 import { viewOf } from '../shell/view-engine.js';
-import { applyPatch, handleFiles, updateTask } from './actions.js';
+import { addFormFiles, applyPatch, handleFiles, updateTask } from './actions.js';
 
 export let DRAG = null;
+const DROPZONES = '[data-dropzone],[data-dropzone-task],[data-dropzone-form],.drawer';
 export function clearDropMarks() {
   $$('.drop-line').forEach(x => x.remove());
   $$('.over').forEach(x => x.classList.remove('over'));
@@ -51,12 +52,13 @@ document.addEventListener('dragend', () => {
 document.addEventListener('dragover', e => {
   const hasFiles = e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
   if (hasFiles) {
-    const dz = e.target.closest?.('[data-dropzone],[data-dropzone-task],.drawer');
+    const dz = e.target.closest?.(DROPZONES);
+    /* always cancel the event: otherwise the browser would open the dropped file and leave the app */
+    e.preventDefault();
     if (dz) {
-      e.preventDefault();
       $$('.dropzone.over').forEach(x => x !== dz && x.classList.remove('over'));
       dz.classList?.add('over');
-    }
+    } else if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
     return;
   }
   if (!DRAG) return;
@@ -117,11 +119,15 @@ document.addEventListener('dragleave', e => {
 document.addEventListener('drop', e => {
   const files = e.dataTransfer?.files;
   if (files && files.length && !DRAG) {
-    const dz = e.target.closest?.('[data-dropzone],[data-dropzone-task],.drawer');
-    if (!dz) return;
     e.preventDefault();
     clearDropMarks();
-    if (dz.dataset.dropzone) handleFiles(files, { project: dz.dataset.dropzone });
+    const dz = e.target.closest?.(DROPZONES);
+    if (!dz) {
+      toast('Drop files on a project’s Files tab, a task, or an attachment area to upload them.', { kind: 'info' });
+      return;
+    }
+    if (dz.hasAttribute('data-dropzone-form')) addFormFiles(files);
+    else if (dz.dataset.dropzone) handleFiles(files, { project: dz.dataset.dropzone });
     else {
       const t = task(dz.dataset.dropzoneTask || S.ui.drawer);
       if (t) handleFiles(files, { project: t.project, task: t.id });

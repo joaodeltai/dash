@@ -2,7 +2,7 @@
 import { MOD, TODAY, diffD, esc, parse } from '../core/utils.js';
 import { ic, wsLogo } from '../core/icons.js';
 import { PSTAT } from '../core/constants.js';
-import { D, S, allTasks, mem, pColor, proj, team, teamsList, visibleProjects } from '../core/store.js';
+import { D, S, allTasks, canCreate, mem, pColor, proj, team, teamsList, visibleProjects } from '../core/store.js';
 import { av } from '../ui/helpers.js';
 import { ROUTE_NAMES } from './render.js';
 import { skeleton } from './skeletons.js';
@@ -60,8 +60,8 @@ export function renderPage() {
       team: pageTeam,
       activity: pageActivity,
       settings: pageSettings,
-      system: pageSystem,
-      states: pageStates,
+      // Internal galleries: development builds only.
+      ...(import.meta.env.DEV ? { system: pageSystem, states: pageStates } : {}),
       archive: pageArchive,
     };
     return (P[r] || page404)();
@@ -112,7 +112,7 @@ export function renderSidebar() {
         ${sItem('activity', 'Activity', 'activity')}
       </div>
       <div class="sgroup" id="side-projects">
-        <div class="sgroup-h"><span>Projects</span><span class="sp"></span><button class="ibtn ibtn-xs" data-a="newProject" data-tip="New project  P" aria-label="New project">${ic('plus', 14)}</button></div>
+        <div class="sgroup-h"><span>Projects</span><span class="sp"></span>${canCreate() ? `<button class="ibtn ibtn-xs" data-a="newProject" data-tip="New project  P" aria-label="New project">${ic('plus', 14)}</button>` : ''}</div>
         ${projs
           .map(p => {
             const open = !!u.expanded[p.id];
@@ -193,6 +193,7 @@ export function renderTopbar() {
     <style>@media(max-width:900px){#mnav-btn{display:inline-flex!important}}</style>
     <nav class="crumbs trunc" aria-label="Breadcrumb">${crumbs()}</nav>
     <span class="sp"></span>
+    <span class="sync-state" id="sync-state" role="status" data-s="${S.ui.sync || 'idle'}">${{ saving: 'Saving…', offline: 'Offline', error: 'Not saved' }[S.ui.sync] || ''}</span>
     <button class="topsearch" data-a="openPalette" aria-label="Search and commands">${ic('search', 14)}<span class="lbltxt">Search or jump to…</span><span class="kbd">${MOD}K</span></button>
     <button class="ibtn" data-a="go" data-r="notifications" data-tip="Notifications" aria-label="Notifications">${ic('bell', 16)}${D().notifs.some(n => !n.read) ? '<span style="position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--surface)"></span>' : ''}</button>
     <button class="btn btn-secondary btn-sm" data-a="pop" data-pop="create" aria-haspopup="menu" aria-label="Create new">${ic('plus', 14)}<span class="hide-m">New</span>${ic('chevron-down', 12, 'hide-m')}</button>

@@ -1,13 +1,15 @@
 /* =====================================================================
    ACTIONS · INPUT HANDLERS · DRAG & DROP · KEYBOARD · INIT
    ===================================================================== */
-import { $, $$, TODAY, addD, dOff, esc, fmtDate, iso, parse, uid } from '../core/utils.js';
+import { $, $$, TODAY, addD, dOff, esc, fmtDate, iso, parse, sanitizeHtml, uid } from '../core/utils.js';
 import { PR, PSTAT, ST } from '../core/constants.js';
-import { D, S, allTasks, canSee, commentsOf, logAct, me, mem, proj, save, task, tasksOf, visibleProjects } from '../core/store.js';
-import { fileType, fsize } from '../ui/helpers.js';
+import { D, S, allTasks, canCreate, canManage, canSee, commentsOf, logAct, me, mem, proj, save, task, tasksOf, visibleProjects } from '../core/store.js';
+import { FORMER_MEMBER, fileType, fsize } from '../ui/helpers.js';
+import { MAX_MB, retryImage } from '../ui/file-urls.js';
+import { MAX_FILE_BYTES, copyStoredFile, discardUploads, fileUrl, uploadFile } from '../data/backend.js';
 import { effectiveDark } from '../core/theme.js';
 import { mutate, toast } from '../ui/toast.js';
-import { autosize, focusKey, fxSet, go, render } from '../shell/render.js';
+import { autosize, focusKey, fxSet, go, render, routeHash } from '../shell/render.js';
 import { viewOf } from '../shell/view-engine.js';
 import { TEMPLATES, closeModal, openModal } from '../overlays/modals.js';
 import { closePop, openPop, tgt } from '../overlays/popovers.js';
@@ -27,6 +29,8 @@ export function nextKey(p) {
 }
 export function createTask(f) {
   const p = proj(f.project) || visibleProjects().find(canSee);
+  // A task always belongs to a project; callers check this first, so this only guards against a crash.
+  if (!p) return null;
   const maxO = Math.max(0, ...D().tasks.map(t => t.order));
   const t = Object.assign(
     {
@@ -59,6 +63,24 @@ export function createTask(f) {
   logAct('created', t);
   return t;
 }
+/* Copies of a task get their own subtask rows: subtask ids are primary keys. */
+export const cloneSubtasks = (list, patch = {}) => (list || []).map(s => ({ ...JSON.parse(JSON.stringify(s)), ...patch, id: uid('s') }));
+/* A copy of a task never carries its attachments: files are stored once and are not duplicated. */
+export function cloneTaskFields(t, patch = {}) {
+  const c = JSON.parse(JSON.stringify(t));
+  delete c.prevStatus;
+  return {
+    ...c,
+    id: uid('t'),
+    key: undefined,
+    subtasks: cloneSubtasks(t.subtasks),
+    attachments: [],
+    created: Date.now(),
+    updated: Date.now(),
+    fav: false,
+    ...patch,
+  };
+}
 export const RECUR_DAYS = { Daily: 1, Weekly: 7, 'Every 2 weeks': 14, Monthly: 30 };
 export function applyPatch(t, patch) {
   const msgs = [];
@@ -83,7 +105,7 @@ export function applyPatch(t, patch) {
           status: 'todo',
           due: nd,
           start: nd,
-          subtasks: t.subtasks.map(s => ({ ...s, done: false })),
+          subtasks: cloneSubtasks(t.subtasks, { done: false }),
           completedAt: null,
           attachments: [],
         });
@@ -286,7 +308,7 @@ A.popPick = el => {
       logAct(
         k === 'assignee' ? 'assigned a subtask on' : 'set a subtask due date on',
         t,
-        k === 'assignee' ? (v ? `to ${mem(v).name}` : '(unassigned)') : v ? fmtDate(v) : '(cleared)',
+        k === 'assignee' ? (v ? `to ${mem(v)?.name || FORMER_MEMBER}` : '(unassigned)') : v ? fmtDate(v) : '(cleared)',
       );
     });
     return;
@@ -312,6 +334,10 @@ A.popPick = el => {
   }
   if (p.type === 'role') {
     const m = mem(p.id);
+    if (!canManage(m) || !['Admin', 'Member', 'Guest'].includes(v)) {
+      closePop();
+      return;
+    }
     mutate(() => {
       m.role = v;
     });
@@ -416,7 +442,7 @@ A._projMove = (el, d) => {
   S.ui.pop = null;
   save();
   render();
-  toast(`Moved ${proj(el.dataset.id).name} ${d < 0 ? 'up' : 'down'}`, { ms: 1600 });
+  toast(`Moved ${proj(el.dataset.id)?.name || 'project'} ${d < 0 ? 'up' : 'down'}`, { ms: 1600 });
 };
 A.toggleDrawerFull = () => {
   S.ui.drawerFull = !S.ui.drawerFull;
@@ -432,6 +458,7 @@ A.toggleDone = el => {
 };
 A.toggleFavTask = el => {
   const t = task(el.dataset.id);
+  if (!t) return;
   mutate(() => {
     t.fav = !t.fav;
   });
@@ -441,6 +468,7 @@ A.toggleFavTask = el => {
 };
 A.toggleFavProj = el => {
   const p = proj(el.dataset.id);
+  if (!p) return;
   mutate(() => {
     p.fav = !p.fav;
   });
@@ -452,36 +480,31 @@ A.copyLink = el => {
   S.ui.pop = null;
   render();
   const d = el.dataset;
-  const path =
-    d.id && task(d.id)
-      ? `task/${task(d.id).key}`
-      : d.pid
-        ? `project/${proj(d.pid).key.toLowerCase()}`
-        : d.fid
-          ? `file/${d.fid}`
-          : d.id && proj(d.id)
-            ? `project/${proj(d.id).key.toLowerCase()}`
-            : '';
-  copy(`https://gr8rstudio.com/${D().ws.url}/${path}`);
+  const base = `${location.origin}${location.pathname}`;
+  // Direct links use the app's own routes (see routeHash in shell/render.js).
+  const pid = d.pid || (d.id && !task(d.id) && proj(d.id) ? d.id : null);
+  if (d.id && task(d.id)) copy(`${base}#/task/${encodeURIComponent(d.id)}`);
+  else if (pid && proj(pid)) copy(base + routeHash('project', { id: pid }));
 };
 A.copyText = el => copy(el.dataset.text, 'Copied to clipboard');
 A.copyEmail = el => {
   S.ui.pop = null;
   render();
-  copy(mem(el.dataset.id).email, 'Email copied');
+  if (mem(el.dataset.id)) copy(mem(el.dataset.id).email, 'Email copied');
 };
 A.dupTask = el => {
   const t = task(el.dataset.id);
   S.ui.pop = null;
+  if (!t) return;
   let n;
   mutate(() => {
-    n = createTask({ ...JSON.parse(JSON.stringify(t)), id: uid('t'), key: undefined, title: t.title + ' (copy)', created: Date.now(), fav: false });
-    n.key = nextKey(proj(n.project));
+    n = createTask(cloneTaskFields(t, { title: t.title + ' (copy)' }));
   });
-  toast('Task duplicated', { action: 'Open', onAction: () => A.openTask({ dataset: { id: n.id } }) });
+  if (n) toast('Task duplicated', { action: 'Open', onAction: () => A.openTask({ dataset: { id: n.id } }) });
 };
 A.archiveTask = el => {
   const t = task(el.dataset.id);
+  if (!t) return;
   const snap = snapshot();
   S.ui.pop = null;
   if (S.ui.drawer === t.id) S.ui.drawer = null;
@@ -535,12 +558,22 @@ A.editTask = el => {
     labels: [...t.labels],
     subtasks: t.subtasks.map(s => ({ ...s })),
     files: [],
+    existing: t.attachments.map(a => ({ id: a.id, name: a.name, type: a.type, size: a.size })),
+    removed: [],
     recur: t.recur,
     more: false,
   };
   S.ui.errors = {};
   openModal({ type: 'task', edit: t.id });
 };
+/* Tasks live in projects. With no project to put one in, point the person to creating a project. */
+export function noProjectYet() {
+  S.ui.pop = null;
+  S.ui.palette = null;
+  if (canCreate()) toast('Create a project first, then add tasks to it.', { kind: 'info', action: 'New project', onAction: () => A.newProject() });
+  else toast("You haven't been added to a project yet. Ask an admin to add you to one.", { kind: 'info', ms: 6000 });
+  render();
+}
 A.newTask = el => {
   const d = el?.dataset || {};
   const pid =
@@ -549,10 +582,15 @@ A.newTask = el => {
     projectFromKey(S.ui.composer?.ctx) ||
     (S.ui.drawer && task(S.ui.drawer)?.project) ||
     visibleProjects().find(p => canSee(p) && p.status !== 'complete')?.id;
+  const project = proj(pid) && canSee(proj(pid)) ? pid : visibleProjects().find(canSee)?.id;
+  if (!project) {
+    noProjectYet();
+    return;
+  }
   S.ui.form = {
     title: '',
     desc: '',
-    project: canSee(proj(pid)) ? pid : 'p1',
+    project,
     status: 'todo',
     assignee: d.assignee || D().me,
     priority: 'medium',
@@ -561,6 +599,8 @@ A.newTask = el => {
     labels: [],
     subtasks: [],
     files: [],
+    existing: [],
+    removed: [],
     recur: null,
     more: S.ui.form?.more || false,
   };
@@ -577,9 +617,15 @@ IN.form = el => {
 IN.formMore = el => {
   S.ui.form.more = el.checked;
 };
-IN.formFiles = el => {
-  [...el.files].forEach(f => S.ui.form.files.push({ name: f.name, size: fsize(f.size), type: fileType(f.name) }));
+/* Files picked in the task form are kept as File objects and uploaded on save, once the task exists. */
+export function addFormFiles(list) {
+  if (!S.ui.form) return;
+  S.ui.form.files.push(...acceptFiles([...list]).map(file => ({ file, name: file.name, size: fsize(file.size), type: fileType(file.name) })));
   render();
+}
+IN.formFiles = el => {
+  addFormFiles(el.files);
+  el.value = '';
 };
 KEY.formAddSub = el => {
   const v = el.value.trim();
@@ -596,6 +642,12 @@ A.formRmFile = el => {
   S.ui.form.files.splice(+el.dataset.i, 1);
   render();
 };
+A.formRmExisting = el => {
+  const f = S.ui.form;
+  const i = f.existing.findIndex(x => x.id === el.dataset.id);
+  if (i >= 0) f.removed.push(...f.existing.splice(i, 1).map(x => x.id));
+  render();
+};
 A.submitTask = () => {
   const m = S.ui.modals[S.ui.modals.length - 1];
   const f = S.ui.form;
@@ -609,7 +661,8 @@ A.submitTask = () => {
     return;
   }
   S.ui.errors = {};
-  const files = f.files.map(x => ({ id: uid('a'), name: x.name, type: x.type, size: x.size, by: D().me, at: Date.now() }));
+  const queued = f.files.map(x => x.file);
+  const gone = new Set(f.removed || []);
   const base = {
     title,
     project: f.project,
@@ -624,6 +677,7 @@ A.submitTask = () => {
   };
   if (m.edit) {
     const t = task(m.edit);
+    const snap = gone.size ? snapshot() : null;
     if (
       !mutate(() => {
         applyPatch(t, base);
@@ -635,34 +689,44 @@ A.submitTask = () => {
             .trim()
         )
           t.desc = f.desc ? `<p>${esc(f.desc)}</p>` : '';
-        t.attachments.push(...files);
+        if (gone.size) {
+          removeFiles([...gone]);
+          logAct('removed a file from', t);
+        }
       })
     )
       return;
     S.ui.modals.pop();
     render();
-    toast('Changes saved');
+    toast('Changes saved', snap ? { action: 'Undo', onAction: () => restore(snap) } : {});
+    handleFiles(queued, { project: t.project, task: t.id });
     return;
   }
   let t;
   if (
     !mutate(() => {
-      t = createTask({ ...base, desc: f.desc ? `<p>${esc(f.desc)}</p>` : '', attachments: files });
-      files.forEach(x => D().files.unshift({ ...x, project: t.project, task: t.id }));
+      t = createTask({ ...base, desc: f.desc ? `<p>${esc(f.desc)}</p>` : '' });
     })
   )
     return;
+  if (!t) {
+    S.ui.modals.pop();
+    noProjectYet();
+    return;
+  }
   if (f.more) {
-    Object.assign(f, { title: '', desc: '', subtasks: [], files: [] });
+    Object.assign(f, { title: '', desc: '', subtasks: [], files: [], existing: [], removed: [] });
     render();
     setTimeout(() => $('#f-title')?.focus(), 0);
     toast(`Created ${t.key}`, { ms: 2000 });
+    handleFiles(queued, { project: t.project, task: t.id });
     return;
   }
   S.ui.modals.pop();
   fxSet({ added: t.id });
   render();
   toast(`Created ${t.key} in ${proj(t.project).name}`, { action: 'Open', onAction: () => A.openTask({ dataset: { id: t.id } }) });
+  handleFiles(queued, { project: t.project, task: t.id });
 };
 
 /* inline composer */
@@ -687,7 +751,13 @@ A.commitComposer = () => {
     return;
   }
   const f = { title: v, ...c.gb };
-  f.project = f.project || projectFromKey(c.ctx) || curProjectId() || 'p1';
+  const pid = [f.project, projectFromKey(c.ctx), curProjectId()].find(id => proj(id) && canSee(proj(id)));
+  f.project = pid || visibleProjects().find(p => canSee(p) && p.status !== 'complete')?.id || visibleProjects().find(canSee)?.id;
+  if (!f.project) {
+    S.ui.composer = null;
+    noProjectYet();
+    return;
+  }
   if (c.ctx === 'mytasks') f.assignee = D().me;
   mutate(() => createTask(f));
   setTimeout(() => $('#composer-in')?.focus(), 0);
@@ -747,7 +817,8 @@ KEY.blur = el => el.blur();
 /* subtasks */
 A.toggleSub = el => {
   const t = task(el.dataset.id);
-  const s = t.subtasks.find(x => x.id === el.dataset.sid);
+  const s = t?.subtasks.find(x => x.id === el.dataset.sid);
+  if (!s) return;
   if (!s.done) fxSet({ done: s.id });
   mutate(() => {
     s.done = !s.done;
@@ -777,60 +848,179 @@ A.expandRow = el => {
   render();
 };
 
-/* attachments */
+/* attachments & files
+   `D().files` is the single source of truth: task.attachments is derived from it by normalize() on save(),
+   and removing a record here deletes the database row and the stored object (after the Undo window). */
+const fileById = id => D().files.find(x => x.id === id);
+/* Removes file records. normalize() promotes any attachment that only exists on a task back into D().files,
+   so the stale entries in task.attachments must go too. */
+function removeFiles(ids) {
+  const gone = new Set(ids);
+  D().files = D().files.filter(x => !gone.has(x.id));
+  D().tasks.forEach(t => {
+    if (t.attachments.some(a => gone.has(a.id))) t.attachments = t.attachments.filter(a => !gone.has(a.id));
+  });
+}
+const errToast = (e, fallback) => toast(e?.message || fallback, { kind: 'err', ms: 6000 });
+
+/* Keeps only files within the size limit and tells the person about the rest. */
+function acceptFiles(list) {
+  const big = list.filter(f => f.size > MAX_FILE_BYTES);
+  if (big.length)
+    toast(
+      big.length === 1
+        ? `${big[0].name} is larger than ${MAX_MB} MB, so it wasn't uploaded.`
+        : `${big.length} files are larger than ${MAX_MB} MB and weren't uploaded.`,
+      {
+        kind: 'err',
+        ms: 6000,
+      },
+    );
+  return list.filter(f => f.size <= MAX_FILE_BYTES);
+}
+const busy = (el, fn) => {
+  el?.classList?.add('is-loading');
+  return fn().finally(() => el?.classList?.remove('is-loading'));
+};
+const noContent = () => toast('This file has no stored content.', { kind: 'err' });
+
 A.rmAttach = el => {
   const t = task(el.dataset.id);
-  const f = t.attachments.find(a => a.id === el.dataset.aid);
-  mutate(() => {
-    t.attachments = t.attachments.filter(a => a.id !== el.dataset.aid);
-    logAct('removed a file from', t);
-  });
-  toast(`Removed ${f.name}`);
+  const f = fileById(el.dataset.aid);
+  if (!t || !f) return;
+  const snap = snapshot();
+  if (
+    mutate(() => {
+      removeFiles([f.id]);
+      logAct('removed a file from', t);
+    })
+  )
+    toast(`Removed ${f.name}`, { action: 'Undo', onAction: () => restore(snap) });
 };
 A.filePreview = el => {
-  const t = task(el.dataset.tid);
-  const f = t.attachments.find(a => a.id === el.dataset.aid);
-  openModal({ type: 'filePreview', file: f, tid: t.id });
+  const f = fileById(el.dataset.aid);
+  if (f) openModal({ type: 'filePreview', file: f, tid: task(el.dataset.tid)?.id || f.task });
 };
 A.previewFile = el => {
-  const f = D().files.find(x => x.id === el.dataset.id);
+  const f = fileById(el.dataset.id);
   S.ui.pop = null;
+  S.ui.palette = null;
   if (f) openModal({ type: 'filePreview', file: f, tid: f.task });
 };
+A.retryPreview = el => {
+  const f = fileById(el.dataset.id);
+  if (f?.path) retryImage(f.path);
+};
+A.downloadFile = el => {
+  const f = fileById(el.dataset.id);
+  S.ui.pop = null;
+  if (!f?.path) return noContent();
+  return busy(el, async () => {
+    try {
+      const url = await fileUrl(f.path, { download: f.name });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      errToast(e, `Couldn't download ${f.name}.`);
+    }
+  });
+};
+A.openFile = el => {
+  const f = fileById(el.dataset.id);
+  S.ui.pop = null;
+  if (!f?.path) return noContent();
+  /* open the tab synchronously so the pop-up blocker allows it, then point it at the signed URL */
+  const w = window.open('about:blank', '_blank');
+  if (!w) return toast('Your browser blocked the new tab. Allow pop-ups for this site and try again.', { kind: 'err', ms: 6000 });
+  w.opener = null;
+  return busy(el, async () => {
+    try {
+      w.location.href = await fileUrl(f.path);
+    } catch (e) {
+      w.close();
+      errToast(e, `Couldn't open ${f.name}.`);
+    }
+  });
+};
+A.copyFileLink = el => {
+  const f = fileById(el.dataset.id);
+  S.ui.pop = null;
+  if (!f?.path) return noContent();
+  return busy(el, async () => {
+    try {
+      await copy(await fileUrl(f.path), 'Temporary link copied. It stops working in 1 hour.');
+    } catch (e) {
+      errToast(e, "Couldn't create a link for this file.");
+    }
+  });
+};
+
+/* Uploads files for real, with progress from the network request. ctx: { project, task? } */
 export function handleFiles(files, ctx) {
-  if (!files || !files.length) return;
+  const list = acceptFiles([...(files || [])]);
+  if (!list.length) return;
+  if (!ctx.project || !proj(ctx.project)) {
+    toast('Pick a project before uploading files.', { kind: 'err' });
+    return;
+  }
   if (S.ui.offline) {
-    toast("Upload failed — you're offline.", { kind: 'err', action: 'Try again', onAction: () => {} });
+    toast("Upload failed: you're offline.", { kind: 'err', action: 'Try again', onAction: () => handleFiles(list, ctx) });
     return;
   }
   S.ui.uploads = S.ui.uploads || [];
-  [...files].forEach(file => {
-    const up = { id: uid('u'), name: file.name, size: fsize(file.size), project: ctx.project, task: ctx.task, pct: 0 };
+  list.forEach(file => {
+    const up = { id: uid('u'), name: file.name, size: fsize(file.size), project: ctx.project, task: ctx.task || null, pct: 0 };
     S.ui.uploads.push(up);
-    const iv = setInterval(() => {
-      up.pct = Math.min(100, up.pct + 9 + Math.round(Math.random() * 22));
-      const bar = document.getElementById('upbar-' + up.id),
-        pc = document.getElementById('upct-' + up.id);
-      if (bar) bar.style.setProperty('--p', up.pct / 100);
-      if (pc) pc.textContent = up.pct + '%';
-      if (up.pct >= 100) {
-        clearInterval(iv);
-        S.ui.uploads = S.ui.uploads.filter(x => x !== up);
-        const rec = { id: uid('f'), name: up.name, type: fileType(up.name), size: up.size, by: D().me, at: Date.now() };
-        D().files.unshift({ ...rec, project: up.project, task: up.task || null });
-        if (up.task) {
-          const t = task(up.task);
-          t.attachments.push(rec);
-          logAct('added a file to', t, up.name);
+    const done = () => {
+      S.ui.uploads = S.ui.uploads.filter(x => x !== up);
+    };
+    uploadFile(file, {
+      project: up.project,
+      task: up.task,
+      onProgress: p => {
+        up.pct = Math.round(p * 100);
+        const bar = document.getElementById('upbar-' + up.id);
+        const pc = document.getElementById('upct-' + up.id);
+        if (bar) bar.style.setProperty('--p', up.pct / 100);
+        if (pc) pc.textContent = up.pct + '%';
+      },
+    }).then(
+      rec => {
+        done();
+        const t = rec.task ? task(rec.task) : null;
+        if (!proj(rec.project) || (rec.task && !t)) {
+          /* the project or task was deleted (or the workspace changed) while the file was uploading */
+          void discardUploads([rec.path]);
+          render();
+          toast(`${rec.name} wasn't added because its ${rec.task && proj(rec.project) ? 'task' : 'project'} is gone.`, { kind: 'err', ms: 6000 });
+          return;
         }
+        D().files.unshift(rec);
+        if (t) logAct('added a file to', t, rec.name);
         save();
         render();
-        toast(`Uploaded ${up.name}`);
-      }
-    }, 220);
+        toast(`Uploaded ${rec.name}`);
+      },
+      err => {
+        done();
+        render();
+        errToast(err, `Couldn't upload ${file.name}.`);
+      },
+    );
   });
   render();
 }
+/* uploads in flight would be lost if the tab closed */
+addEventListener('beforeunload', e => {
+  if (S.ui.uploads?.length) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 IN.uploadFiles = el => {
   handleFiles(el.files, { project: el.dataset.project, task: el.dataset.task });
   el.value = '';
@@ -925,16 +1115,34 @@ document.addEventListener('mousedown', e => {
   const ed = $('#d-desc');
   if (ed) {
     const t = task(ed.dataset.rte);
-    t.desc = ed.innerHTML;
-    save();
+    if (t) {
+      t.desc = sanitizeHtml(ed.innerHTML);
+      save();
+    }
   }
+});
+/* Pasted or dropped HTML is cleaned before it reaches the editor, so markup copied from elsewhere never runs here. */
+const rteInsert = (e, data) => {
+  const ed = e.target.closest?.('[data-rte]');
+  if (!ed || !data) return;
+  const html = data.getData('text/html');
+  const text = data.getData('text/plain');
+  if (!html && !text) return;
+  e.preventDefault();
+  if (html) document.execCommand('insertHTML', false, sanitizeHtml(html));
+  else document.execCommand('insertText', false, text);
+};
+document.addEventListener('paste', e => rteInsert(e, e.clipboardData));
+document.addEventListener('drop', e => {
+  if (e.dataTransfer?.files?.length) return;
+  rteInsert(e, e.dataTransfer);
 });
 document.addEventListener('input', e => {
   const ed = e.target.closest?.('[data-rte]');
   if (!ed) return;
   const t = task(ed.dataset.rte);
   if (t) {
-    t.desc = ed.innerHTML;
+    t.desc = sanitizeHtml(ed.innerHTML);
     t.updated = Date.now();
     save();
   }
@@ -1211,7 +1419,14 @@ A.clearProjFilters = () => {
   render();
 };
 A.newProject = () => {
-  S.ui.pform = { name: '', desc: '', icon: 'folder', color: 'indigo', team: me().team, lead: D().me, due: dOff(30), tmpl: 'blank' };
+  if (!canCreate()) {
+    S.ui.pop = null;
+    S.ui.palette = null;
+    toast("Guests can't create projects. Ask a workspace admin to add you to one.", { kind: 'info' });
+    render();
+    return;
+  }
+  S.ui.pform = { name: '', desc: '', icon: 'folder', color: 'indigo', team: me()?.team || '', lead: D().me, due: dOff(30), tmpl: 'blank', ms: [] };
   S.ui.errors = {};
   S.ui.pop = null;
   openModal({ type: 'project' });
@@ -1219,7 +1434,17 @@ A.newProject = () => {
 A.editProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
-  S.ui.pform = { name: p.name, desc: p.desc, icon: p.icon, color: p.color, team: p.team, lead: p.lead, due: p.due, tmpl: 'blank' };
+  S.ui.pform = {
+    name: p.name,
+    desc: p.desc,
+    icon: p.icon,
+    color: p.color,
+    team: p.team,
+    lead: p.lead,
+    due: p.due,
+    tmpl: 'blank',
+    ms: (p.milestones || []).map(x => ({ name: x.name, date: x.date })),
+  };
   S.ui.errors = {};
   openModal({ type: 'project', edit: p.id });
 };
@@ -1290,6 +1515,30 @@ export function createProject(f, tmplId) {
   );
   return p;
 }
+/* Validates the milestone rows of the project form. Empty rows are dropped; returns the clean list sorted
+   by date (ties keep the typed order), or null after flagging the first problem on its row. */
+function readMilestones(f) {
+  const errs = {};
+  const out = [];
+  (f.ms || []).forEach((x, i) => {
+    const name = (x.name || '').trim();
+    const date = x.date || '';
+    if (!name && !date) return;
+    if (!name) errs[i] = 'Give the milestone a name';
+    else if (name.length > 200) errs[i] = 'Names can be up to 200 characters';
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parse(date).getTime())) errs[i] = 'Pick a date for the milestone';
+    else out.push({ name, date });
+  });
+  const bad = Object.keys(errs);
+  S.ui.errors.pms = bad.length ? errs : null;
+  if (bad.length) {
+    render();
+    const i = bad[0];
+    $(f.ms[i].name?.trim() ? `#p-ms-d-${i}` : `#p-ms-n-${i}`)?.focus();
+    return null;
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
 A.submitProject = () => {
   const m = S.ui.modals[S.ui.modals.length - 1];
   const f = S.ui.pform;
@@ -1301,6 +1550,8 @@ A.submitProject = () => {
     $('#p-name')?.focus();
     return;
   }
+  const ms = readMilestones(f);
+  if (!ms) return;
   if (m.edit) {
     const p = proj(m.edit);
     if (
@@ -1313,6 +1564,7 @@ A.submitProject = () => {
           team: f.team,
           lead: f.lead,
           due: f.due,
+          milestones: ms,
           members: [...new Set([...p.members, f.lead])],
         }),
       )
@@ -1327,6 +1579,7 @@ A.submitProject = () => {
   if (
     !mutate(() => {
       p = createProject(f, f.tmpl);
+      p.milestones = ms;
     })
   )
     return;
@@ -1337,19 +1590,36 @@ A.submitProject = () => {
 A.dupProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
+  if (!p) return;
+  if (!canCreate()) {
+    toast("Guests can't create projects.", { kind: 'info' });
+    render();
+    return;
+  }
   let n;
   mutate(() => {
     n = createProject({ ...p, name: p.name + ' copy' }, 'blank');
-    tasksOf(p.id).forEach(t => createTask({ ...JSON.parse(JSON.stringify(t)), id: uid('t'), key: undefined, project: n.id, status: 'todo' }));
+    // Same audience as the original: a copy of a private project stays private to the same people.
+    n.private = !!p.private;
+    n.members = [...new Set([...n.members, ...p.members])];
+    n.perms = JSON.parse(JSON.stringify(p.perms || {}));
+    const ids = new Map();
+    const copies = tasksOf(p.id).map(t => {
+      const c = createTask(cloneTaskFields(t, { project: n.id, status: 'todo', completedAt: null }));
+      ids.set(t.id, c.id);
+      return [t, c];
+    });
+    // Dependencies point at the copies, not at the original project's tasks.
+    copies.forEach(([t, c]) => (c.deps = (t.deps || []).map(d => ids.get(d)).filter(Boolean)));
   });
-  toast(`Duplicated ${p.name}`, { action: 'Open', onAction: () => go('project', { id: n.id }) });
+  if (n) toast(`Duplicated ${p.name}`, { action: 'Open', onAction: () => go('project', { id: n.id }) });
 };
 A.archiveProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
   confirmDlg({
     title: `Archive ${p.name}?`,
-    body: 'The project will be hidden from the sidebar and project lists. Tasks, files, and comments are kept, and you can restore it from Settings → Projects.',
+    body: 'The project will be hidden from the sidebar and project lists. Tasks, files, and comments are kept, and you can restore it from Archive.',
     ok: 'Archive project',
     icon: 'archive',
     run: () => {
@@ -1406,12 +1676,24 @@ A.delProject = el => {
 };
 A.requestAccess = el => {
   const p = proj(el.dataset.id);
-  toast(`Access requested. We'll notify you when ${mem(p?.lead)?.name || 'the owner'} responds.`);
+  const lead = mem(p?.lead);
+  // There is no access-request flow: say who can grant access instead of pretending someone was notified.
+  toast(`Ask ${lead ? lead.name : 'the project lead or a workspace admin'} to add you to ${p ? p.name : 'this project'}.`, { kind: 'info', ms: 6000 });
 };
 
-/* sharing & invites */
+/* sharing & invites
+   No email is ever sent: inviting creates a member with status "invited", and that person joins the workspace
+   automatically when they sign up (or log in) with the same address. */
+const inviteName = e =>
+  e
+    .split('@')[0]
+    .replace(/[._-]+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+const byEmail = e => D().members.find(x => (x.email || '').toLowerCase() === e.toLowerCase());
+const copyLinkAction = { action: 'Copy sign-up link', onAction: () => A.copyInviteLink(), ms: 7000 };
 A.share = el => {
   const id = el.dataset.id || curProjectId();
+  if (!proj(id)) return;
   S.ui.shareQ = '';
   S.ui.pop = null;
   openModal({ type: 'share', id });
@@ -1423,23 +1705,26 @@ IN.shareQ = el => {
 A.shareAdd = el => {
   const p = proj(el.dataset.id);
   const m = mem(el.dataset.mid);
-  mutate(() => {
-    p.members.push(m.id);
-  });
+  if (!p || !m) return;
+  if (!p.members.includes(m.id))
+    mutate(() => {
+      p.members.push(m.id);
+    });
   S.ui.shareQ = '';
   render();
-  toast(`${m.name} can now edit ${p.name}`);
+  toast(`${m.name} now has access to ${p.name}`);
 };
 A.shareInvite = () => {
   const m = S.ui.modals[S.ui.modals.length - 1];
   const p = proj(m.id);
   const v = ($('#share-in')?.value || '').trim();
   const perm = $('#share-perm')?.value;
+  if (!p) return;
   if (!v) {
     $('#share-in')?.focus();
     return;
   }
-  const ex = D().members.find(x => x.email.toLowerCase() === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase());
+  const ex = byEmail(v) || D().members.find(x => x.name.toLowerCase() === v.toLowerCase());
   if (ex) {
     if (!p.members.includes(ex.id))
       mutate(() => {
@@ -1452,52 +1737,67 @@ A.shareInvite = () => {
     toast(`Shared with ${ex.name}`);
     return;
   }
-  if (!/^\S+@\S+\.\S+$/.test(v)) {
+  if (!canCreate()) {
+    toast('Guests can only share with people already in the workspace.', { kind: 'err' });
+    return;
+  }
+  if (!EMAIL_RE.test(v)) {
     toast('Enter a valid email address, like name@company.com', { kind: 'err' });
     return;
   }
-  const nm = v
-    .split('@')[0]
-    .replace(/[._-]+/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase());
+  const email = v.toLowerCase();
   mutate(() => {
     const id = uid('m');
-    D().members.push({ id, name: nm, email: v, role: 'Guest', team: p.team, title: 'Guest', c: '#6B7280', status: 'invited', last: null, tz: '—' });
+    D().members.push({ id, name: inviteName(email), email, role: 'Guest', team: p.team, title: 'Guest', c: '#6B7280', status: 'invited', last: null, tz: '—' });
     p.members.push(id);
     p.perms = p.perms || {};
     p.perms[id] = perm;
   });
   S.ui.shareQ = '';
   render();
-  toast(`Invitation sent to ${v}`);
+  toast(`${email} was invited as a guest. No email is sent: they get access when they sign up with this address.`, copyLinkAction);
 };
 IN.sharePerm = el => {
   const p = proj(el.dataset.id);
   const mid = el.dataset.mid;
+  if (!p) return;
+  const name = mem(mid)?.name || FORMER_MEMBER;
   if (el.value === '__remove') {
     const snap = snapshot();
     mutate(() => {
       p.members = p.members.filter(x => x !== mid);
     });
-    toast(`Removed ${mem(mid).name}`, { action: 'Undo', onAction: () => restore(snap) });
+    toast(`Removed ${name}`, { action: 'Undo', onAction: () => restore(snap) });
   } else {
     mutate(() => {
       p.perms = p.perms || {};
       p.perms[mid] = el.value;
     });
-    toast(`${mem(mid).name}: ${el.value}`, { ms: 1800 });
+    toast(`${name}: ${el.value}`, { ms: 1800 });
   }
 };
 IN.shareAccess = el => {
   const p = proj(el.dataset.id);
+  if (!p) return;
+  const priv = el.value === 'private';
   mutate(() => {
-    p.access = el.value;
+    // `access` is derived from `private` when the state is normalized.
+    p.private = priv;
+    // Whoever makes a project private keeps access to it.
+    if (priv && !p.members.includes(D().me)) p.members.push(D().me);
   });
+  toast(priv ? `${p.name} is now private` : `Everyone at ${D().ws.name} can open ${p.name}`, { ms: 2200 });
 };
 A.invite = () => {
+  S.ui.pop = null;
+  S.ui.palette = null;
+  if (!canCreate()) {
+    toast("Guests can't invite people. Ask a workspace admin.", { kind: 'info' });
+    render();
+    return;
+  }
   S.ui.inviteDraft = '';
   S.ui.errors = {};
-  S.ui.pop = null;
   openModal({ type: 'invite' });
 };
 A.submitInvite = () => {
@@ -1505,11 +1805,15 @@ A.submitInvite = () => {
   S.ui.inviteDraft = raw;
   const role = $('#inv-role').value;
   const team = $('#inv-team').value;
-  const list = raw
-    .split(/[\s,;]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-  const bad = list.filter(e => !/^\S+@\S+\.\S+$/.test(e));
+  const list = [
+    ...new Set(
+      raw
+        .split(/[\s,;]+/)
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const bad = list.filter(e => !EMAIL_RE.test(e));
   if (!list.length) {
     S.ui.errors.invite = 'Enter at least one email address';
     render();
@@ -1520,40 +1824,28 @@ A.submitInvite = () => {
     render();
     return;
   }
-  loadingBtn('inv-submit', 600, () => {
-    if (
-      !mutate(() =>
-        list.forEach(e => {
-          if (!D().members.some(m => m.email === e))
-            D().members.push({
-              id: uid('m'),
-              name: e
-                .split('@')[0]
-                .replace(/[._-]+/g, ' ')
-                .replace(/\b\w/g, c => c.toUpperCase()),
-              email: e,
-              role,
-              team,
-              title: role,
-              c: '#6B7280',
-              status: 'invited',
-              last: null,
-              tz: '—',
-            });
-        }),
-      )
-    )
-      return;
-    S.ui.modals.pop();
-    S.ui.errors = {};
+  const dup = list.map(byEmail).find(Boolean);
+  if (dup) {
+    S.ui.errors.invite = dup.status === 'invited' ? `${dup.email} has already been invited` : `${dup.email} is already a member of ${D().ws.name}`;
     render();
-    toast(`${list.length} invitation${list.length > 1 ? 's' : ''} sent`);
-  });
-};
-A.resendInvite = el => {
-  S.ui.pop = null;
+    return;
+  }
+  if (
+    !mutate(() =>
+      list.forEach(email =>
+        D().members.push({ id: uid('m'), name: inviteName(email), email, role, team, title: role, c: '#6B7280', status: 'invited', last: null, tz: '—' }),
+      ),
+    )
+  )
+    return;
+  S.ui.modals.pop();
+  S.ui.errors = {};
+  S.ui.inviteDraft = '';
   render();
-  toast(`Invite resent to ${mem(el.dataset.id).email}`);
+  toast(
+    `${list.length === 1 ? list[0] + ' is' : list.length + ' people are'} invited. No email is sent: share the sign-up link so they can join.`,
+    copyLinkAction,
+  );
 };
 A.viewProfile = el => go('member', { id: el.dataset.id });
 A.assignToMember = el => {
@@ -1563,11 +1855,20 @@ A.assignToMember = el => {
 A.removeMember = el => {
   const m = mem(el.dataset.id);
   S.ui.pop = null;
+  if (!m) return;
+  if (!canManage(m)) {
+    toast(m.id === D().me ? "You can't remove yourself." : 'Only owners and admins can remove members.', { kind: 'info' });
+    render();
+    return;
+  }
+  const invited = m.status === 'invited';
   const n = allTasks().filter(t => t.assignee === m.id && t.status !== 'done').length;
   confirmDlg({
-    title: `Remove ${m.name}?`,
-    body: `${esc(m.name)} will lose access to ${esc(D().ws.name)} immediately.${n ? ` Their <b>${n} open task${n > 1 ? 's' : ''}</b> will become unassigned.` : ''}`,
-    ok: 'Remove member',
+    title: invited ? `Cancel invitation for ${m.email}?` : `Remove ${m.name}?`,
+    body: invited
+      ? `${esc(m.email)} won't join ${esc(D().ws.name)} when they sign up.${n ? ` <b>${n} open task${n > 1 ? 's' : ''}</b> assigned to them will become unassigned.` : ''}`
+      : `${esc(m.name)} will lose access to ${esc(D().ws.name)} immediately.${n ? ` Their <b>${n} open task${n > 1 ? 's' : ''}</b> will become unassigned.` : ''}`,
+    ok: invited ? 'Cancel invitation' : 'Remove member',
     danger: true,
     icon: 'user-minus',
     run: () => {
@@ -1582,7 +1883,7 @@ A.removeMember = el => {
         })
       ) {
         if (S.ui.route === 'member') go('members');
-        toast(`Removed ${m.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        toast(invited ? `Invitation for ${m.email} cancelled` : `Removed ${m.name}`, { action: 'Undo', onAction: () => restore(snap) });
       }
     },
   });
@@ -1610,34 +1911,52 @@ IN.fileSort = el => {
   render();
 };
 A.renameFile = el => {
-  const f = D().files.find(x => x.id === el.dataset.id);
+  const f = fileById(el.dataset.id);
   S.ui.pop = null;
+  if (!f) return;
   openModal({
     type: 'prompt',
     title: 'Rename file',
     label: 'File name',
     value: f.name,
     run: v => {
-      if (v)
+      const cur = fileById(f.id);
+      v = (v || '').trim();
+      if (v && cur && v !== cur.name)
         mutate(() => {
-          f.name = v;
-          f.type = fileType(v);
+          cur.name = v;
+          cur.type = fileType(v);
         });
     },
   });
 };
-A.dupFile = el => {
-  const f = D().files.find(x => x.id === el.dataset.id);
+A.dupFile = async el => {
+  const f = fileById(el.dataset.id);
   S.ui.pop = null;
-  mutate(() => {
-    const i = D().files.indexOf(f);
-    D().files.splice(i + 1, 0, { ...f, id: uid('f'), name: f.name.replace(/(\.[^.]+)$/, ' copy$1'), at: Date.now(), by: D().me });
-  });
-  toast('File duplicated');
+  if (!f) return;
+  if (!f.path) return noContent();
+  if (S.ui.offline) return toast("Couldn't duplicate the file: you're offline.", { kind: 'err' });
+  const name = /\.[^.]+$/.test(f.name) ? f.name.replace(/(\.[^.]+)$/, ' copy$1') : f.name + ' copy';
+  toast(`Duplicating ${f.name}…`, { kind: 'info', ms: 1500 });
+  try {
+    const { id, path } = await copyStoredFile(f.path, f.project, name);
+    const added = () => {
+      if (!proj(f.project)) return false;
+      return mutate(() => {
+        const i = D().files.findIndex(x => x.id === f.id);
+        D().files.splice(i < 0 ? 0 : i + 1, 0, { ...f, id, path, name, type: fileType(name), at: Date.now(), by: D().me });
+      });
+    };
+    if (added()) toast('File duplicated');
+    else void discardUploads([path]);
+  } catch (e) {
+    errToast(e, `Couldn't duplicate ${f.name}.`);
+  }
 };
 A.delFile = el => {
-  const f = D().files.find(x => x.id === el.dataset.id);
+  const f = fileById(el.dataset.id);
   S.ui.pop = null;
+  if (!f) return;
   confirmDlg({
     title: 'Delete file?',
     body: `<b>${esc(f.name)}</b> will be removed from the project${f.task ? ' and its task' : ''}.`,
@@ -1647,8 +1966,7 @@ A.delFile = el => {
       const snap = snapshot();
       if (
         mutate(() => {
-          D().files = D().files.filter(x => x !== f);
-          if (f.task && task(f.task)) task(f.task).attachments = task(f.task).attachments.filter(a => a.name !== f.name);
+          removeFiles([f.id]);
         })
       )
         toast(`Deleted ${f.name}`, { action: 'Undo', onAction: () => restore(snap) });
@@ -1659,6 +1977,7 @@ A.delFile = el => {
 /* inbox & notifications */
 A.selNotif = el => {
   const n = D().notifs.find(x => x.id === el.dataset.id);
+  if (!n) return;
   n.read = true;
   S.ui.inboxSel = n.id;
   save();
@@ -1666,6 +1985,7 @@ A.selNotif = el => {
 };
 A.toggleRead = el => {
   const n = D().notifs.find(x => x.id === el.dataset.id);
+  if (!n) return;
   n.read = !n.read;
   save();
   render();
@@ -1683,6 +2003,7 @@ A.toggleUnreadOnly = () => {
 };
 A.openNotif = el => {
   const n = D().notifs.find(x => x.id === el.dataset.id);
+  if (!n) return;
   n.read = true;
   save();
   if (n.task) A.openTask({ dataset: { id: n.task } });
@@ -1748,11 +2069,11 @@ A.demoToast = el => {
   else if (v === 'retry') {
     toast('Retrying…', { kind: 'info', ms: 1200 });
     setTimeout(() => toast('Loaded successfully'), 1300);
-  } else toast('Moved “Create homepage wireframes” to Review', { action: 'Undo', onAction: () => toast('Undone', { kind: 'info' }) });
+  } else toast('Moved a task to Review', { action: 'Undo', onAction: () => toast('Undone', { kind: 'info' }) });
 };
 A.demoConfirm = () =>
   confirmDlg({
-    title: 'Archive Marketing Website?',
+    title: 'Archive this project?',
     body: 'The project will be hidden from the sidebar. You can restore it any time.',
     ok: 'Archive project',
     icon: 'archive',
@@ -1820,9 +2141,16 @@ IN.prefSel = el => {
   toast('Preference saved', { ms: 1500 });
 };
 A.wsColor = el => {
+  if (!['Owner', 'Admin'].includes(me().role)) return;
+  // keep what was typed in the name/handle fields (they are only saved by "Save changes")
+  const typed = ['#ws-name', '#ws-url'].map(id => [id, $(id)?.value]);
   D().ws.c = el.dataset.v;
   save();
   render();
+  typed.forEach(([id, v]) => {
+    const i = $(id);
+    if (i && v != null) i.value = v;
+  });
 };
 A.avColor = el => {
   me().c = el.dataset.v;
@@ -1838,17 +2166,15 @@ A.saveProfile = () => {
   }
   S.ui.errors.pname2 = null;
   const tt = $('#pf-title').value.trim();
-  loadingBtn('pf-save', 600, () => {
-    if (
-      mutate(() => {
-        S.prefs.name = n;
-        S.prefs.title = tt;
-        me().name = n;
-        me().title = tt;
-      })
-    )
-      toast('Profile updated');
-  });
+  if (
+    mutate(() => {
+      S.prefs.name = n;
+      S.prefs.title = tt;
+      me().name = n;
+      me().title = tt;
+    })
+  )
+    toast('Profile updated');
 };
 IN.pwStrength = el => {
   S.ui.pwNew = el.value;
@@ -1857,57 +2183,4 @@ IN.pwStrength = el => {
   tmp.innerHTML = strengthMeter(el.value);
   if (m) m.replaceWith(tmp.firstElementChild || document.createTextNode(''));
   else if (tmp.firstElementChild) el.after(tmp.firstElementChild);
-};
-A.setup2fa = () => {
-  S.ui.tfaSetup = true;
-  S.ui.errors = {};
-  render();
-};
-A.cancel2fa = () => {
-  S.ui.tfaSetup = false;
-  render();
-};
-A.verify2fa = () => {
-  const v = $('#tfa-code').value.trim();
-  if (!/^\d{6}$/.test(v)) {
-    S.ui.errors.tfa = 'Enter the 6-digit code from your app';
-    render();
-    return;
-  }
-  S.ui.errors = {};
-  mutate(() => {
-    D().tfa = true;
-    S.ui.tfaSetup = false;
-  });
-  toast('Two-factor authentication enabled');
-};
-A.disable2fa = () =>
-  confirmDlg({
-    title: 'Turn off two-factor authentication?',
-    body: 'Your account will be protected by your password only.',
-    ok: 'Turn off',
-    danger: true,
-    icon: 'shield-off',
-    run: () => {
-      mutate(() => {
-        D().tfa = false;
-      });
-      toast('Two-factor authentication turned off');
-    },
-  });
-A.changePlan = el => {
-  const v = el.dataset.v;
-  const price = { Free: 0, Team: 12, Business: 24 }[v];
-  confirmDlg({
-    title: `${v === 'Free' ? 'Downgrade' : 'Upgrade'} to ${v}?`,
-    body: `${D().members.length} members × $${price}/month = <b>$${D().members.length * price}/month</b>, prorated from today and billed to Visa ending 4242.`,
-    ok: v === 'Free' ? 'Downgrade' : `Upgrade to ${v}`,
-    icon: 'gem',
-    run: () => {
-      mutate(() => {
-        D().plan = v;
-      });
-      toast(`You're now on the ${v} plan`);
-    },
-  });
 };
