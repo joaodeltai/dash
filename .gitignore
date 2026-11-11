@@ -13,3 +13,4 @@ supabase/.temp/
 supabase/.branches/
 .vitest/
 .vercel
+.mcp.json

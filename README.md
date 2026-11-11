@@ -22,6 +22,8 @@ Este repositório não declara licença própria: nenhuma foi inventada. Este te
 - Views de projeto: quadro, lista, tabela, calendário, linha do tempo, arquivos e visão geral.
 - Envio de arquivos para o Storage do Supabase, anexos de tarefa, notificações, atividade, favoritos e visões salvas.
 - Atualização em tempo real entre pessoas e dispositivos, indicador de conexão e envio automático das alterações pendentes.
+- Interface em inglês e em português do Brasil. O idioma segue o navegador na primeira visita e pode ser trocado na tela de login e em Configurações; a escolha fica no perfil da pessoa.
+- Histórico de atividade que continua disponível depois que a tarefa ou o projeto é excluído.
 
 ## Stack
 
@@ -71,8 +73,10 @@ vercel.json             build, saída e cabeçalhos de segurança (CSP) da Verce
 supabase/               config.toml do Supabase local e migrations/ (schema, RLS, Storage, Realtime)
 docs/                   ARCHITECTURE.md, SETUP.md, DATABASE.md e preview.png
 tests/
-  unit/                 lógica pura: mapeadores e motor de sincronização
+  unit/                 lógica pura: mapeadores, motor de sincronização e tradução (inclui a cobertura do dicionário pt-BR)
   integration/          Supabase local: RLS, triggers, RPCs e Storage
+  e2e/                  navegador (Playwright) contra o Supabase local
+  sql/                  cenários em SQL puro, executados com psql dentro de uma transação desfeita no fim
 src/
   main.js               entrada: importa estilos e módulos e inicia o app (boot)
   styles/
@@ -82,6 +86,9 @@ src/
     views/              lista, quadro, tabela, calendário, linha do tempo, projetos e arquivos
     pages/              configurações, login e onboarding
   core/                 utilitários, constantes, ícones, store (estado e consultas), tema
+    i18n.js               tradução: tr(), trn(), idioma atual e nomes de meses e dias
+    activity-text.js      texto do histórico e das notificações (guardado em inglês) no idioma de quem lê
+  i18n/pt-BR/           dicionário do português, um arquivo por área do app; common.js tem o vocabulário compartilhado
   data/                 única camada que fala com o Supabase
     supabase.js           cliente Supabase (variáveis VITE_*)
     backend.js            sessão, carga do workspace, Realtime, Storage, autenticação
@@ -116,6 +123,7 @@ A visão geral de como estado e banco se conectam está em [docs/ARCHITECTURE.md
 - **Interações:** elementos declaram `data-a="nomeDaAcao"`. `actions/events.js` delega o clique para `A.nomeDaAcao`. Inputs usam `data-in`, e handlers de blur usam `data-blur`.
 - **Layout:** toda borda de página usa `var(--gutter)`, então breadcrumb, cabeçalho, barra de ferramentas, lista, tabela e quadro começam na mesma linha.
 - **Dropdowns:** escreva um `<select class="select">` normal. `ui/select.js` o desenha como o menu do design system e mantém o elemento nativo como fonte da verdade.
+- **Texto:** todo texto exibido passa por `tr('English text')` (ou `trn` para plurais) de `core/i18n.js`. O texto em inglês é a chave; a tradução entra em `src/i18n/pt-BR/`. O teste unitário `tests/unit/i18n.test.js` falha se uma chave usada no código não tiver tradução. O que é gravado no banco (verbos do histórico, nomes de status, papéis, permissões) fica em inglês e é traduzido só na exibição.
 - **Ícones:** chame `ic('nome')` com qualquer nome de ícone do [Lucide](https://lucide.dev). O plugin `virtual:icons` embute só os ícones que o código usa.
 
 ## Fluxo de branches
