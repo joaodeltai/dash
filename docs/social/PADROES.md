@@ -8,7 +8,7 @@ Modelo: `supabase/migrations/20261111044354_init_schema.sql` (tabela `teams` e s
 
 - Arquivo em `supabase/migrations/<timestamp>_<nome>.sql`, criado com `supabase migration new <nome>`. Comentários em português. Uma migration aplicada nunca é editada.
 - Tabela em `public`, chave `id uuid primary key default gen_random_uuid()`, `workspace_id uuid not null references public.workspaces (id) on delete cascade`, textos com `check (char_length(...))`, datas `timestamptz not null default now()`.
-- Índice em toda chave estrangeira, com nome `<tabela>_<coluna>_idx`.
+- Índice em toda chave estrangeira, com nome `<tabela>_<coluna sem o _id>_idx` (`teams_workspace_idx`, `tasks_project_idx`).
 - Autorização por funções `security definer` do schema `private` (não exposto pela API), todas com `set search_path = ''`:
   - `private.is_member(ws)`: membro ativo do workspace (qualquer papel).
   - `private.can_write(ws)`: papel `owner`, `admin` ou `member` (convidado não escreve).
@@ -25,8 +25,8 @@ Modelo: `supabase/migrations/20261111044354_init_schema.sql` (tabela `teams` e s
 
 - Privilégios: o papel `anon` não tem nenhum. A migration inicial faz `revoke all on all tables in schema public from anon, authenticated` e depois dá `grant` explícito ao `authenticated`. Tabela nova precisa repetir os dois passos para si mesma. No banco local o `service_role` também não tem `insert/update/delete` nas tabelas de `public`: o que uma Edge Function grava precisa de `grant` explícito a `service_role`.
 - Linha filha herda o workspace do pai por trigger (`private.set_ws_from_project`, `set_ws_from_task`): o valor enviado pelo cliente é ignorado. Autoria (`created_by`) é carimbada por trigger, não escolhida pelo cliente.
-- Views expostas pela API usam `with (security_invoker = true)`, para que o RLS das tabelas valha para quem consulta.
-- Valores guardados ficam em inglês canônico (`status = 'error'`, papéis `owner/admin/member/guest`) e são traduzidos só na tela.
+- O repositório ainda não tem nenhuma view. O que ele expõe pela API além das tabelas são wrappers `security invoker` em `public` para funções do schema `private`. As views desta entrega seguem a mesma ideia com `with (security_invoker = true)`, para que o RLS das tabelas valha para quem consulta: é uma regra adotada aqui, não um padrão já existente.
+- Valores guardados ficam em inglês canônico (papéis `owner/admin/member/guest`, status `active/invited/deactivated`, `backlog/todo/progress/review/done`) e são traduzidos só na tela.
 - O servidor MCP do Supabase recusa SQL com `drop` ou `delete` sem confirmação interativa (ver `docs/DATABASE.md`, "Criar uma nova migration").
 
 ## 2. Internacionalização
@@ -37,7 +37,7 @@ Modelo: `src/core/i18n.js` e `src/i18n/pt-BR/`.
 - Parâmetros: `tr('Hello {name}', { name })`. Plural: `trn('{n} task', '{n} tasks', n)`.
 - Homógrafos levam contexto depois de uma barra vertical: `tr('Open|verb')`. O contexto não aparece em inglês.
 - Português fica em `src/i18n/pt-BR/<área>.js` (um arquivo por área, `export default { 'chave': 'texto' }`), registrado em `src/i18n/pt-BR/index.js`. `common.js` é mesclado por último e tem prioridade.
-- `tests/unit/i18n.test.js` varre `src/` (menos `src/i18n/`), extrai toda chave literal de `tr(` e `trn(` e falha se alguma não estiver no dicionário pt-BR, se um `{placeholder}` sumir ou se houver texto vazio. Chave montada em variável não é vista pelo teste: use literais.
+- `tests/unit/i18n.test.js` varre `src/` (menos `src/i18n/`), extrai toda chave literal de `tr(` e `trn(` e falha se alguma não estiver no dicionário pt-BR, se um `{placeholder}` sumir (só `{n}` pode ser omitido) ou se houver texto vazio. Chave montada em variável não é vista pelo teste: use literais.
 - Datas e números: `fmtDate`, `relDate`, `ago` em `src/core/utils.js`; nomes de mês e dia em `src/core/i18n.js` (`monShort`, `shortDay`).
 
 ## 3. Tema claro e escuro
@@ -45,7 +45,7 @@ Modelo: `src/core/i18n.js` e `src/i18n/pt-BR/`.
 Modelo: `src/styles/tokens.css`.
 
 - Toda cor vem de variável CSS. Claro em `:root`; escuro redefinido em `@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) }` e em `:root[data-theme='dark']`.
-- Superfícies `--bg`, `--surface`, `--surface-2`, `--surface-3`; linhas `--border`, `--divider`; texto `--text`, `--text-2`, `--text-3`, `--text-4`; destaque `--accent`, `--accent-soft`; semânticas `--green`, `--amber`, `--red`, `--blue`, `--violet`, `--teal`, `--rose`, `--orange`, `--gray` e as versões `-soft`.
+- Superfícies `--bg`, `--surface`, `--surface-2`, `--surface-3`; linhas `--border`, `--divider`; texto `--text`, `--text-2`, `--text-3`, `--text-4`; destaque `--accent`, `--accent-soft`; semânticas `--green`, `--amber`, `--red`, `--blue`, `--violet`, `--teal`, `--rose`, `--orange`, `--gray`. Versões suaves existem só para quatro: `--accent-soft`, `--green-soft`, `--amber-soft` e `--red-soft`; as demais se obtêm com `color-mix`.
 - Raio `--r`, `--r-lg`; fonte `--fs-xs` a `--fs-2xl`; espaçamento `--s-1` a `--s-12`; margem de página `--gutter` (24px, 16px no celular).
 - Nenhuma cor hexadecimal em CSS ou HTML novo. Mistura de cores com `color-mix(in srgb, var(--x) N%, transparent)`.
 - Breakpoints em `src/styles/responsive.css`: 1100px (`.grid2` vira uma coluna), 900px (barra lateral vira gaveta, `.stats` em duas colunas) e 640px (modais viram folha inferior).
@@ -71,7 +71,7 @@ Modelo: `src/shell/render.js`, `src/shell/layout.js`, `src/pages/overview.js`.
 - Painel: `<section class="panel"><div class="panel-h"><h2>…</h2><div class="acts">…</div></div><div class="panel-b">…</div></section>`. Duas colunas: `.grid2`; pilha: `.stack`.
 - Números de destaque: `.stats > .stat` com `.k` (rótulo), `.v` (valor), `.d` (detalhe; `.up` verde, `.bad` vermelho).
 - Botões: `.btn` com `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger-ghost`, tamanho `.btn-sm`; só ícone: `.ibtn`.
-- Formulário: `.field > label.label + input.input` (ou `select.select`, que vira o dropdown do sistema), ajuda `.hint`, erro `.err` com `role="alert"` e `.input.is-error`.
+- Formulário: `.field > label.label + input.input` (ou `select.select`, que `src/ui/select.js` troca pelo dropdown do design system), ajuda `.hint`, erro `.err` com `role="alert"` e `.input.is-error`.
 - Alternância: `.seg > button.on`. Abas: `.tabs > .tab.on`. Etiqueta: `.badge` com `.green`, `.amber`, `.red`, `.gray`.
 - Aviso: `<div class="alert warn|danger|info|ok">${ic(...)}<span>…</span></div>`.
 - Estado vazio: `empty(ícone, título, texto, botão)` de `src/ui/helpers.js`.
@@ -105,4 +105,4 @@ A regra desta entrega é não alterar arquivo existente além do necessário par
 - **Diálogos desenhados pela própria página**, com as mesmas classes de modal, em vez de novos `case` em `src/overlays/modals.js`. Confirmações continuam usando `confirmDlg`.
 - **Documentação em `docs/social/`**, sem tocar em `README.md` nem em `docs/*.md`.
 
-Arquivos existentes alterados: `src/shell/render.js`, `src/shell/layout.js`, `src/main.js` e `src/i18n/pt-BR/index.js`.
+Arquivos existentes que a entrega altera, e só eles: `src/shell/render.js`, `src/shell/layout.js`, `src/main.js` e `src/i18n/pt-BR/index.js`.
