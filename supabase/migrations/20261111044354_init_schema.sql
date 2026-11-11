@@ -526,10 +526,13 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if recipient is null or recipient is not distinct from actor then return; end if;
+  -- Cada pessoa pode silenciar um tipo de notificação em profiles.notif_prefs (chave inapp_<tipo> = false).
   insert into public.notifications (workspace_id, recipient_id, actor_id, type, task_id, project_id, text, snippet)
   select ws, m.id, actor, kind, tid, pid, left(txt, 200), left(snip, 400)
   from public.members m
-  where m.id = recipient and m.workspace_id = ws and m.user_id is not null and m.status = 'active';
+  join public.profiles p on p.id = m.user_id
+  where m.id = recipient and m.workspace_id = ws and m.status = 'active'
+    and coalesce(p.notif_prefs ->> ('inapp_' || kind), 'true') <> 'false';
 end
 $$;
 

@@ -1,7 +1,7 @@
 /* ---------- store ---------- */
 import { TODAY, diffD, iso, parse, uid } from './utils.js';
 import { PCOLORS } from './constants.js';
-import { emptyData } from '../data/mappers.js';
+import { emptyData, normalize } from '../data/mappers.js';
 
 /* Workspace data lives in Supabase (see src/data/backend.js). Only presentation preferences are cached in
    this browser, so the theme and sidebar state apply before the workspace has loaded. */
@@ -101,6 +101,9 @@ export function setPersist(fn) {
 }
 /* Called after every mutation: schedules a sync of whatever changed in S.data / S.prefs / S.views. */
 export function save() {
+  // Keep the in-memory workspace consistent right away (derived attachments, no dangling references),
+  // so the render that follows a mutation already shows what will be stored.
+  if (S.data.me) normalize(S.data);
   cachePrefs();
   persist();
 }
