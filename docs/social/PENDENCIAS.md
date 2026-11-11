@@ -1,6 +1,6 @@
 # Pendências
 
-No fechamento do trabalho, nenhuma fase tinha esgotado os quatro ciclos de verificação e nenhum critério de pronto estava reprovado (a tabela, com o que cada verificador conferiu, está no relatório final da entrega; os comandos para repetir as checagens estão no README). O que está aqui é o que **não foi feito de propósito** (depende de aprovação), o que **não pôde ser validado** neste ambiente e o que ficou **fora do escopo** e vale decidir.
+No fechamento do trabalho, nenhuma fase tinha esgotado os quatro ciclos de verificação e nenhum critério de pronto estava reprovado (a tabela, com o que cada verificador conferiu, está em [VERIFICACAO.md](VERIFICACAO.md); os comandos para repetir as checagens estão no README). O que está aqui é o que **não foi feito de propósito** (depende de aprovação), o que **não pôde ser validado** neste ambiente e o que ficou **fora do escopo** e vale decidir.
 
 ## Depende de aprovação (nada disto foi executado)
 
@@ -41,3 +41,7 @@ Nenhuma reprovou uma fase. Ficam registradas para decisão:
 - A função que herda o workspace da conta responde de forma diferente para uma conta inexistente e para uma conta de outro workspace. Só serve a quem já conhece o identificador (um UUID aleatório).
 - O índice único de contas usa `lower(handle)`, que não pode ser alvo de `on_conflict` pela API: contas são criadas com `insert` simples.
 - A marca não é normalizada no banco (`Acme` e `acme` seriam marcas diferentes se gravadas por SQL). A tela reaproveita a grafia existente.
+- Na confirmação de remover uma conta (o diálogo de confirmação que o app já tinha), um nome muito longo e sem espaços sai cortado na borda do título. Os botões continuam visíveis e a página não rola de lado.
+- Quando a coleta grava a fotografia de um dia que tinha números lançados à mão, os números lançados e não coletados ficam, mas a origem do dia passa a ser a da coleta e o campo `extra` é regravado.
+- As publicações são regravadas com todos os campos a cada coleta: se a fonte deixar de devolver as visualizações de uma publicação, o valor anterior some.
+- Com variação de poucas unidades sobre bilhões, os rótulos do eixo do gráfico saem por extenso e a coluna do eixo fica larga no celular (o gráfico continua legível).

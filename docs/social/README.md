@@ -12,18 +12,18 @@ Uma conta tem no máximo uma fotografia por dia. Gravar o mesmo dia de novo, por
 
 ## O que existe
 
-| Onde                                                     | O quê                                                                                                 |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `supabase/migrations/20261111170127_social_networks.sql` | Seis tabelas, três views, índices, RLS. Só cria objetos novos.                                        |
-| `supabase/functions/social-collect/`                     | A Edge Function da coleta (`index.ts`, `collect.ts`, `providers.ts`, `normalize.ts`).                 |
-| `supabase/cron/social_collect_cron.sql`                  | Agendamento diário com `pg_cron`. **Não é migration**: roda-se à mão, uma vez.                        |
-| `src/pages/social.js`, `src/social/`                     | A aba. É carregada só quando alguém a abre.                                                           |
-| `src/i18n/pt-BR/social.js`                               | Textos em português (o inglês é a própria chave, como no resto do app).                               |
-| `tests/sql/social_networks.sql`                          | Isolamento entre workspaces, upsert idempotente, crescimento com resultado conhecido.                 |
-| `tests/unit/social-*.test.js`                            | Normalização e coleta (com banco e rede simulados); lógica da tela (CSV, datas, séries, metas).       |
-| `tests/functions/social-collect.local.js`                | A função de verdade, servida localmente, contra um servidor que imita a Apify e o Google.             |
-| `tests/e2e/social.spec.js`                               | A aba num navegador de verdade contra o Supabase local.                                               |
-| `docs/social/`                                           | Este guia, [PADROES.md](PADROES.md), [SUPOSICOES.md](SUPOSICOES.md) e [PENDENCIAS.md](PENDENCIAS.md). |
+| Onde                                                     | O quê                                                                                                                                   |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `supabase/migrations/20261111170127_social_networks.sql` | Seis tabelas, três views, índices, RLS. Só cria objetos novos.                                                                          |
+| `supabase/functions/social-collect/`                     | A Edge Function da coleta (`index.ts`, `collect.ts`, `providers.ts`, `normalize.ts`).                                                   |
+| `supabase/cron/social_collect_cron.sql`                  | Agendamento diário com `pg_cron`. **Não é migration**: roda-se à mão, uma vez.                                                          |
+| `src/pages/social.js`, `src/social/`                     | A aba. É carregada só quando alguém a abre.                                                                                             |
+| `src/i18n/pt-BR/social.js`                               | Textos em português (o inglês é a própria chave, como no resto do app).                                                                 |
+| `tests/sql/social_networks.sql`                          | Isolamento entre workspaces, upsert idempotente, crescimento com resultado conhecido.                                                   |
+| `tests/unit/social-*.test.js`                            | Normalização e coleta (com banco e rede simulados); lógica da tela (CSV, datas, séries, metas).                                         |
+| `tests/functions/social-collect.local.js`                | A função de verdade, servida localmente, contra um servidor que imita a Apify e o Google.                                               |
+| `tests/e2e/social.spec.js`                               | A aba num navegador de verdade contra o Supabase local.                                                                                 |
+| `docs/social/`                                           | Este guia, [PADROES.md](PADROES.md), [SUPOSICOES.md](SUPOSICOES.md), [PENDENCIAS.md](PENDENCIAS.md) e [VERIFICACAO.md](VERIFICACAO.md). |
 
 ### Tabelas
 
@@ -132,7 +132,7 @@ curl -sS -X POST "https://<ref-do-projeto>.supabase.co/functions/v1/social-colle
 
 Abra `supabase/cron/social_collect_cron.sql`, troque os dois valores marcados com `<...>` (o endereço da função e o mesmo `SOCIAL_COLLECT_SECRET`) e rode o arquivo **no SQL Editor** do projeto. Não salve o arquivo com os valores preenchidos e, depois de rodar, apague a consulta do histórico do SQL Editor (ela contém o segredo em texto). O arquivo recusa rodar enquanto os marcadores estiverem lá, e pode ser rodado de novo para trocar um valor.
 
-Ele liga `pg_cron` e `pg_net`, guarda o endereço e o segredo no Vault e agenda `social-collect-daily` para `0 9 * * *`. O `pg_cron` do Supabase conta em UTC, e 09:00 UTC é 06:00 em Brasília o ano todo. O agendador espera a resposta da função por até 300 s, de propósito mais do que a função pode levar. Os comandos de conferência e o de desligar (`cron.unschedule`) estão comentados no fim do arquivo.
+Ele liga `pg_cron` e `pg_net`, guarda o endereço e o segredo no Vault e agenda `social-collect-daily` para `0 9 * * *`. O `pg_cron` do Supabase conta em UTC, e 09:00 UTC é 06:00 em Brasília o ano todo. O agendador espera a resposta da função por até 300 s. Se a função levar mais do que isso, só a resposta HTTP se perde: o resultado de cada rede já está gravado em `social_collect_runs`. Os comandos de conferência e o de desligar (`cron.unschedule`) estão comentados no fim do arquivo.
 
 ### 5. Cadastrar os coletores
 
