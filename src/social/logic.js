@@ -38,17 +38,18 @@ const validDate = (y, m, d) => {
   return y >= 2000 && y <= 2100 && dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 };
 const pad = n => String(n).padStart(2, '0');
-/* Accepts 2026-11-11, 11/11/2026, 11-11-2026 and 11.11.2026 (day first, as written in Brazil). Anything else is null. */
+/* Accepts 2026-11-11 (also with / or .), 11/11/2026, 11-11-2026 and 11.11.2026 (day first, as written in Brazil), each
+   optionally followed by a time. Anything else is null. */
 export function parseDate(text) {
   const s = String(text ?? '').trim();
-  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/);
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T ].*)?$/);
   if (m) return validDate(+m[1], +m[2], +m[3]) ? `${m[1]}-${pad(m[2])}-${pad(m[3])}` : null;
-  m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[T ].*)?$/);
   if (m) return validDate(+m[3], +m[2], +m[1]) ? `${m[3]}-${pad(m[2])}-${pad(m[1])}` : null;
   return null;
 }
 
-/* A count typed by a person: "12345", "12.345", "12,345", "1,2 mil", "3.4k". Null when it is not a number. */
+/* A count typed by a person: "12345", "12.345", "12,345", "1.234,00", "1,2 mil", "3.4k". Null when it is not a number. */
 export function parseCount(text) {
   if (typeof text === 'number') return Number.isFinite(text) && text >= 0 ? Math.round(text) : null;
   const s = String(text ?? '')
@@ -64,6 +65,10 @@ export function parseCount(text) {
     if (!Number.isFinite(n)) return null;
     return Math.round(n * (m[2] === 'k' || m[2] === 'mil' ? 1e3 : m[2] === 'm' || m[2] === 'mi' ? 1e6 : 1e9));
   }
+  // a spreadsheet may write a whole number with empty decimals: "1234,00", "1.234,00", "1,234.0". One or two zeros after
+  // the last mark are decimals (thousands come in threes), so they can go.
+  const cents = digits.match(/^(\d{1,3}(?:[.,]\d{3})+|\d+)[.,]0{1,2}$/);
+  if (cents) digits = cents[1];
   if (/^\d{1,3}([.,]\d{3})+$/.test(digits)) digits = digits.replace(/[.,]/g, '');
   if (!/^\d+$/.test(digits)) return null;
   const n = Number(digits);
@@ -72,16 +77,19 @@ export function parseCount(text) {
 
 /* ---------- CSV ---------- */
 
-/* Splits CSV text into rows of cells. The separator (comma, semicolon or tab) is taken from the first line;
+/* Splits CSV text into rows of cells. The separator (comma, semicolon or tab) is taken from the first line that is
+   not blank;
    cells may be quoted and may contain the separator, quotes ("") and line breaks. Blank lines are skipped.
    `lines` gives, for each row, the line of the file where it starts (1 is the first), so a problem can be
    pointed at the line the person sees in their editor. */
 export function parseCsv(text) {
   let src = String(text ?? '');
   if (src.charCodeAt(0) === 0xfeff) src = src.slice(1); // byte order mark written by spreadsheet programs
-  const firstLine = src.split(/\r?\n/, 1)[0] || '';
+  const firstLine = src.split(/\r\n|\r|\n/).find(l => l.trim() !== '') || ''; // the first line that has something in it
   const count = ch => firstLine.split(ch).length - 1;
-  const sep = count('\t') > count(';') && count('\t') > count(',') ? '\t' : count(';') > count(',') ? ';' : ',';
+  // spreadsheet programs may announce the separator in a first line of their own: sep=;
+  const hint = firstLine.trim().match(/^sep=(.)$/i);
+  const sep = hint ? hint[1] : count('\t') > count(';') && count('\t') > count(',') ? '\t' : count(';') > count(',') ? ';' : ',';
   const found = [];
   let row = [],
     cell = '',
@@ -119,7 +127,8 @@ export function parseCsv(text) {
     } else cell += c;
   }
   if (cell !== '' || row.length) endRow();
-  const kept = found.filter(r => r.cells.some(c => c.trim() !== ''));
+  const filled = found.filter(r => r.cells.some(c => c.trim() !== ''));
+  const kept = hint ? filled.slice(1) : filled; // the announcement line is not data
   return { sep, rows: kept.map(r => r.cells), lines: kept.map(r => r.line) };
 }
 

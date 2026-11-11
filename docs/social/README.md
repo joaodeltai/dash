@@ -286,7 +286,7 @@ Funcionam para qualquer rede, com ou sem coletor.
 **Importar CSV.** Botão **Importar CSV**: escolha um arquivo ou cole as linhas. A tela mostra quantos dias estão prontos e quais linhas têm problema (com o número da linha) antes de importar; linhas com problema ficam de fora.
 
 - Uma linha por dia. A primeira linha dá o nome das colunas.
-- Separador: vírgula, ponto e vírgula ou tab (detectado pela primeira linha).
+- Separador: vírgula, ponto e vírgula ou tab, detectado pela primeira linha não vazia. Arquivos salvos pelo Excel em português são lidos como estão: ponto e vírgula, codificação do Windows e a linha `sep=;` que ele às vezes escreve no topo.
 - Colunas aceitas, em inglês ou português, sem diferenciar maiúsculas e acentos:
 
   | Coluna      | Também aceita                                                                                        |
@@ -303,8 +303,8 @@ Funcionam para qualquer rede, com ou sem coletor.
   | `handle`    | `conta`, `usuário`, `account`, `username`, `perfil`                                                  |
 
 - `date` é obrigatória, e pelo menos uma coluna de número.
-- Datas: `2026-01-31` ou `31/01/2026` (dia primeiro). Datas futuras são recusadas.
-- Números: `12345`, `12.345`, `12,345`, `1,2 mil`, `3.4k`.
+- Datas: `2026-01-31`, `2026/01/31` ou `31/01/2026` (dia primeiro), com ou sem hora depois. Datas futuras são recusadas.
+- Números inteiros: `12345`, `12.345`, `12,345`, `1.234,00`, `1,2 mil`, `3.4k`. Número com casas decimais que não sejam zero é recusado.
 - Com as colunas `platform` e `handle`, um arquivo alimenta várias contas de uma vez (as contas precisam existir). Sem elas, escolha a conta no diálogo.
 - Um dia que aparece duas vezes para a mesma conta fica com a última linha. Os números do arquivo substituem os que já estavam gravados naquele dia; uma célula vazia não altera o número que já existia.
 - Limite: 2 MB por arquivo.

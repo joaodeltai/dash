@@ -61,7 +61,13 @@ describe('numbers', () => {
     expect(parseCount('2M')).toBe(2000000);
     expect(parseCount('0')).toBe(0);
     expect(parseCount(77)).toBe(77);
-    for (const bad of ['', '  ', 'many', '-5', '12.5', '1,5', '1e3', '12 345 abc', '.', ',', null, undefined, -1, NaN])
+    // whole numbers a spreadsheet wrote with empty decimals
+    expect(parseCount('1234,00')).toBe(1234);
+    expect(parseCount('1.234,00')).toBe(1234);
+    expect(parseCount('1,234.0')).toBe(1234);
+    expect(parseCount('12.000')).toBe(12000); // three digits after the mark are thousands, not decimals
+    expect(parseCount('1.234.000')).toBe(1234000);
+    for (const bad of ['', '  ', 'many', '-5', '12.5', '1,5', '1e3', '12 345 abc', '.', ',', '1,000.5', '12,34', null, undefined, -1, NaN])
       expect(parseCount(bad), String(bad)).toBeNull();
   });
 });
@@ -75,6 +81,8 @@ describe('dates', () => {
     expect(parseDate('31-01-2026')).toBe('2026-01-31');
     expect(parseDate('31.01.2026')).toBe('2026-01-31');
     expect(parseDate('2026-01-31T10:00:00Z')).toBe('2026-01-31');
+    expect(parseDate('2026/01/31')).toBe('2026-01-31');
+    expect(parseDate('31/01/2026 09:30')).toBe('2026-01-31');
     for (const bad of ['31/02/2026', '2026-13-01', '2026-00-10', '01/31/2026', 'yesterday', '', null, '20260131', '31/01/26', '1999-12-31'])
       expect(parseDate(bad), String(bad)).toBeNull();
   });
@@ -149,6 +157,26 @@ describe('CSV', () => {
       { line: 3, code: 'no-number-column' },
     ]);
     expect(parseCsv('a,b\n\n1,2\n"x\ny",3\n4,5').lines).toEqual([1, 3, 4, 6]);
+  });
+
+  it('finds the separator even when the text starts with blank lines', () => {
+    // pasted text often starts with a line break, and spreadsheets in Portuguese write semicolons
+    expect(parseCsv('\n\ndata;seguidores\n01/11/2026;1').sep).toBe(';');
+    expect(parseCsv('\r\n\r\ndate\tfollowers\r\n2026-11-01\t1').sep).toBe('\t');
+    expect(parseCsv('  \n\t\n \r\ndata;seguidores\r\n01/11/2026;1').sep).toBe(';');
+    expect(parseCsv('\r\rdata;seguidores\r01/11/2026;1').sep).toBe(';');
+    const semi = read('\n\ndata;seguidores\n01/11/2026;1.100\nruim;2\n', { defaultAccountId: 'sb' });
+    expect(semi.rows).toEqual([{ account_id: 'sb', date: '2026-11-01', followers: 1100 }]);
+    expect(semi.errors).toEqual([{ line: 5, code: 'bad-date', value: 'ruim' }]);
+    const tab = read('\r\n\r\ndate\tplatform\thandle\tfollowers\r\n2026-11-01\tinstagram\tacme\t10\r\n', {});
+    expect(tab.rows).toEqual([{ account_id: 'ig', date: '2026-11-01', followers: 10 }]);
+    expect(tab.errors).toEqual([]);
+    // a spreadsheet's own first line announcing the separator is honoured and is not data
+    const hinted = read('sep=;\ndata;seguidores\n01/11/2026;7\nruim;1\n', { defaultAccountId: 'ig' });
+    expect(hinted.rows).toEqual([{ account_id: 'ig', date: '2026-11-01', followers: 7 }]);
+    expect(hinted.errors).toEqual([{ line: 4, code: 'bad-date', value: 'ruim' }]);
+    // a first line with only one column still reads: there is no separator to find
+    expect(read('\ndate\n2026-11-01\n', { defaultAccountId: 'ig' }).errors.map(e => e.code)).toEqual(['no-number-column']);
   });
 
   it('reports each bad line with its number and keeps the good ones', () => {

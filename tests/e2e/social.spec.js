@@ -201,6 +201,16 @@ test('a CSV is checked line by line before it is imported, pasted or from a file
   await expect(dialog(page)).toHaveCount(0);
   expect(query(`select count(*)::int as n from public.social_snapshots where workspace_id = ${lit(ids.ws)}`)[0].n).toBe(before);
 
+  // the way a Brazilian spreadsheet saves it: Windows encoding, semicolons, a blank line first, accented column names
+  await page.locator('.ph [data-a="socialCsv"]').click();
+  await pickOption(page, dialog(page).locator('button[data-for="soc-c-account"]'), 'acmeletter');
+  const latin1 = Buffer.from(`\r\nData;Seguidores;Visualizações\r\n${br(dayInSaoPaulo(-2))};1.300,00;45\r\n`, 'latin1');
+  await dialog(page).locator('#soc-c-file').setInputFiles({ name: 'planilha.csv', mimeType: 'text/csv', buffer: latin1 });
+  await expect(dialog(page).locator('.alert.ok')).toContainText('1 day ready to import');
+  await dialog(page).locator('[data-a="socialCsvImport"]').click();
+  await expect(dialog(page)).toHaveCount(0);
+  expect(snapshots('acmeletter').find(s => s.date === dayInSaoPaulo(-2))).toEqual({ date: dayInSaoPaulo(-2), followers: 1300, views: 45, source: 'csv' });
+
   // a file with no usable column is refused with the reason and nothing can be imported
   await page.locator('.ph [data-a="socialCsv"]').click();
   await dialog(page).locator('#soc-c-text').fill('name,total\nx,1');

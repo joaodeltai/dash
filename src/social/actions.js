@@ -245,18 +245,25 @@ IN.socialCsvFile = el => {
     render();
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    if (SOC.dialog?.type !== 'csv') return;
-    SOC.csv = { name: file.name, text: String(reader.result || '') };
-    readCsv();
-    render();
+  // Spreadsheet programs often save CSV in the Windows encoding instead of UTF-8. Read as UTF-8 first; if that leaves
+  // characters that could not be decoded, the file is in the other encoding: read it again that way.
+  const read = encoding => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (SOC.dialog?.type !== 'csv') return;
+      const text = String(reader.result || '');
+      if (!encoding && text.includes(String.fromCharCode(0xfffd))) return read('windows-1252');
+      SOC.csv = { name: file.name, text };
+      readCsv();
+      render();
+    };
+    reader.onerror = () => {
+      SOC.csv = { name: file.name, text: '', error: tr("The file couldn't be read.") };
+      render();
+    };
+    reader.readAsText(file, encoding || 'utf-8');
   };
-  reader.onerror = () => {
-    SOC.csv = { name: file.name, text: '', error: tr("The file couldn't be read.") };
-    render();
-  };
-  reader.readAsText(file);
+  read('');
 };
 let pasteTimer = 0;
 IN.socialCsvText = el => {
