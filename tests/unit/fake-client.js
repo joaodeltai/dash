@@ -1,5 +1,6 @@
 /* A fake Supabase client that records every call the sync engine makes and can simulate failures.
-   Only the query-builder surface the engine uses is implemented: from().upsert / update().in|match / delete().in|match. */
+   Only the query-builder surface the engine uses is implemented: from().upsert / update().in|match / delete().in|match,
+   each optionally followed by .select(columns) (recorded as call.select). */
 
 export function createFakeClient() {
   const calls = [];
@@ -34,6 +35,10 @@ export function createFakeClient() {
       },
       match(obj) {
         call.filter.match = obj;
+        return q;
+      },
+      select(cols) {
+        call.select = cols;
         return q;
       },
       then(resolve, reject) {

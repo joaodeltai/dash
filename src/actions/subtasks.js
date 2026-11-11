@@ -5,6 +5,7 @@ import { $, esc } from '../core/utils.js';
 import { S, logAct, save, task } from '../core/store.js';
 import { mutate, toast } from '../ui/toast.js';
 import { render } from '../shell/render.js';
+import { tr } from '../core/i18n.js';
 import { A, BLUR, IN, createTask } from './actions.js';
 
 export const subOf = (t, sid) => t && t.subtasks.find(s => s.id === sid);
@@ -76,5 +77,5 @@ A.promoteSub = el => {
     return;
   S.ui.subOpen = null;
   render();
-  toast(`Converted to ${n.key}`, { action: 'Open', onAction: () => A.openTask({ dataset: { id: n.id } }) });
+  toast(tr('Converted to {key}', { key: n.key }), { action: tr('Open'), onAction: () => A.openTask({ dataset: { id: n.id } }) });
 };

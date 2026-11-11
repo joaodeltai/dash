@@ -1,4 +1,5 @@
 /* ---------- signed image URLs for previews and thumbnails ---------- */
+import { tr } from '../core/i18n.js';
 import { MAX_FILE_BYTES, fileUrl } from '../data/backend.js';
 import { render } from '../shell/render.js';
 
@@ -29,7 +30,7 @@ export function imageState(path) {
       },
       err => {
         entry.state = 'error';
-        entry.error = err?.message || "Couldn't load the preview.";
+        entry.error = err?.message || tr("Couldn't load the preview.");
       },
     )
     .finally(redraw);
@@ -50,7 +51,7 @@ document.addEventListener(
     const entry = cache.get(img.dataset.fpath);
     if (!entry || entry.state === 'error') return;
     entry.state = 'error';
-    entry.error = "This image can't be displayed in the browser. Download it to open it.";
+    entry.error = tr("This image can't be displayed in the browser. Download it to open it.");
     entry.broken = true;
     redraw();
   },

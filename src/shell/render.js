@@ -1,6 +1,7 @@
 /* =====================================================================
    SHELL: render loop, router, sidebar, topbar, skeletons, filter engine
    ===================================================================== */
+import { tr } from '../core/i18n.js';
 import { $, $$ } from '../core/utils.js';
 import { D, S, canSee, mem, proj, task, team, touch } from '../core/store.js';
 import { applyPrefs } from '../core/theme.js';
@@ -131,7 +132,7 @@ export function openUrl(hash, opt = {}) {
     const t = task(target.task);
     if (!t || !canSee(proj(t.project))) {
       home();
-      return "That task doesn't exist or you don't have access to it.";
+      return tr("That task doesn't exist or you don't have access to it.");
     }
     go('project', { id: t.project, tab: S.prefs.defaultTab || 'board' }, { replace: true, keepDrawer: true, ...opt });
     S.ui.drawer = t.id;
@@ -145,7 +146,7 @@ export function openUrl(hash, opt = {}) {
     (target.route === 'team' && !team(target.params.id))
   ) {
     home();
-    return "That page doesn't exist or you don't have access to it.";
+    return tr("That page doesn't exist or you don't have access to it.");
   }
   go(target.route, target.params, { replace: true, ...opt });
   return null;
@@ -193,8 +194,8 @@ export function tryFocus(key) {
 export function pageTitle() {
   const u = S.ui;
   if (u.auth || u.booting || u.bootError || !D().me) return 'Gr8r Studio';
-  let t = ROUTE_NAMES[u.route] || 'Not found';
-  if (u.route === 'project' && proj(u.params.id)) t = `${(PTABS.find(x => x[0] === u.params.tab) || [0, 'Saved view'])[1]} · ${proj(u.params.id).name}`;
+  let t = tr(ROUTE_NAMES[u.route] || 'Not found');
+  if (u.route === 'project' && proj(u.params.id)) t = `${tr((PTABS.find(x => x[0] === u.params.tab) || [0, 'Saved view'])[1])} · ${proj(u.params.id).name}`;
   if (u.route === 'member' && mem(u.params.id)) t = mem(u.params.id).name;
   if (u.route === 'team' && team(u.params.id)) t = team(u.params.id).name;
   return `${t} · ${D().ws.name}`;

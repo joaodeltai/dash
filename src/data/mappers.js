@@ -20,7 +20,9 @@ export const newId = () =>
       );
 
 /* Tables in dependency order: parents first. Inserts and updates run in this order, deletes in reverse.
-   mode: 'full' (insert/update/delete) · 'insert' (append-only) · 'update' (rows are created by the database). */
+   mode: 'full' (insert/update/delete) · 'insert' (append-only) · 'update' (rows are created by the database).
+   server: columns whose final value is decided by the database; the sync engine reads them back after an insert,
+   and after an update that touches one of the `serverOn` columns. */
 export const TABLES = [
   { name: 'workspaces', pk: ['id'], mode: 'update' },
   { name: 'profiles', pk: ['id'], mode: 'update' },
@@ -29,7 +31,7 @@ export const TABLES = [
   { name: 'member_state', pk: ['member_id'], mode: 'update' },
   { name: 'projects', pk: ['id'], mode: 'full' },
   { name: 'project_members', pk: ['project_id', 'member_id'], mode: 'full' },
-  { name: 'tasks', pk: ['id'], mode: 'full' },
+  { name: 'tasks', pk: ['id'], mode: 'full', server: ['key'], serverOn: ['project_id', 'key'] },
   { name: 'subtasks', pk: ['id'], mode: 'full' },
   { name: 'task_dependencies', pk: ['task_id', 'depends_on_id'], mode: 'full' },
   { name: 'files', pk: ['id'], mode: 'full' },
@@ -245,6 +247,9 @@ export function hydrate(rows, ctx) {
       project: a.project_id || null,
       at: toMs(a.created_at) || 0,
       extra: a.extra || '',
+      // what the entry is about, kept by the database so it stays readable after the task or project is deleted
+      label: a.subject || '',
+      projectName: a.project_name || null,
     }));
   d.notifs = [...(rows.notifications || [])]
     .sort((a, b) => (toMs(b.created_at) || 0) - (toMs(a.created_at) || 0))
@@ -379,7 +384,11 @@ export function normalize(d) {
       if (!c.re[e].length) delete c.re[e];
     }
   }
-  d.activity = d.activity.filter(a => (!a.task || taskIds.has(a.task)) && (!a.project || projectIds.has(a.project)));
+  // History outlives a deleted task: the entry stays in its project and keeps the task's title (`label`), as the
+  // database does. Entries of a project deleted here are dropped; the database keeps them and the next load brings
+  // them back with the project's name.
+  d.activity = d.activity.filter(a => !a.project || projectIds.has(a.project));
+  for (const a of d.activity) if (a.task && !taskIds.has(a.task)) a.task = null;
   // Authorship (comment, activity, notification, file) is left untouched when the author is gone: the database
   // clears it itself when the member row is deleted, and the UI shows such authors as former members.
   d.notifs = d.notifs.filter(n => (!n.task || taskIds.has(n.task)) && (!n.project || projectIds.has(n.project)));
@@ -469,7 +478,6 @@ export function flatten(state, ctx) {
       description: str(p.desc, 20000),
       is_private: !!p.private,
       milestones: cleanJson((p.milestones || []).map(m => ({ name: str(m.name, 200), date: dateOrNull(m.date) }))),
-      task_seq: Number.isInteger(p.seq) && p.seq >= 0 ? p.seq : 200,
       archived_at: p.archived ? toIso(p.archivedAt) : null,
       created_by: p.createdBy || ctx.userId,
     });
@@ -481,6 +489,7 @@ export function flatten(state, ctx) {
     put('tasks', {
       id: t.id,
       project_id: t.project,
+      // a provisional key: the database assigns the real one (unique in the workspace) and the sync engine reads it back
       key: str(t.key, 24, 'T'),
       title: str(t.title, 500, 'Untitled').trim() || 'Untitled',
       description: str(t.desc, 100000),

@@ -4,20 +4,29 @@ import { LOGO, ic } from '../core/icons.js';
 import { S } from '../core/store.js';
 import { AUTH_PROVIDERS } from '../data/supabase.js';
 import { effectiveDark } from '../core/theme.js';
+import { LANGS, getLang, tr, trn } from '../core/i18n.js';
 import { TEMPLATES } from '../overlays/modals.js';
 import { strengthMeter } from './settings.js';
 
+/* "English · Português": the person is not signed in yet, so the language is chosen here (language names are never translated). */
+const LANG_LABEL = { en: 'English', 'pt-BR': 'Português' };
+export const langSwitch = () =>
+  `<div class="row" style="justify-content:center;gap:8px;margin-bottom:8px" role="group" aria-label="${tr('Language')}">${LANGS.map(l =>
+    l.id === getLang()
+      ? `<span aria-current="true" lang="${l.id}" style="font-weight:600;color:var(--text)">${LANG_LABEL[l.id] || l.name}</span>`
+      : `<button type="button" class="link" lang="${l.id}" data-a="setLang" data-v="${l.id}">${LANG_LABEL[l.id] || l.name}</button>`,
+  ).join('<span class="faint" aria-hidden="true">·</span>')}</div>`;
 export function authShell(inner, topRight = '') {
-  return `<div class="auth"><div class="auth-top"><span class="brand">${LOGO(22)}</span><div class="row">${topRight}<button class="ibtn" data-a="toggleDark" data-tip="Toggle theme" aria-label="Toggle theme">${ic(effectiveDark() ? 'sun' : 'moon', 16)}</button></div></div>
+  return `<div class="auth"><div class="auth-top"><span class="brand">${LOGO(22)}</span><div class="row">${topRight}<button class="ibtn" data-a="toggleDark" data-tip="${tr('Toggle theme')}" aria-label="${tr('Toggle theme')}">${ic(effectiveDark() ? 'sun' : 'moon', 16)}</button></div></div>
     <div class="auth-c">${inner}</div>
-    <div class="auth-foot" style="padding:18px;font-size:12px" ><span class="faint">© 2026 Gr8r Studio</span></div></div>`;
+    <div class="auth-foot" style="padding:18px;font-size:12px" >${langSwitch()}<span class="faint">© 2026 Gr8r Studio</span></div></div>`;
 }
 const hasProvider = p => AUTH_PROVIDERS.includes(p);
 export const hasSocial = () => AUTH_PROVIDERS.some(p => ['google', 'azure', 'apple'].includes(p));
 export const socialBtns = () => `<div class="social">
-  ${hasProvider('google') ? `<button class="btn btn-secondary btn-lg" data-a="socialAuth" data-v="Google"><svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Continue with Google</button>` : ''}
-  ${hasProvider('azure') ? `<button class="btn btn-secondary btn-lg" data-a="socialAuth" data-v="Microsoft"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect width="6.4" height="6.4" fill="#F25022"/><rect x="7.6" width="6.4" height="6.4" fill="#7FBA00"/><rect y="7.6" width="6.4" height="6.4" fill="#00A4EF"/><rect x="7.6" y="7.6" width="6.4" height="6.4" fill="#FFB900"/></svg>Continue with Microsoft</button>` : ''}
-  ${hasProvider('apple') ? `<button class="btn btn-secondary btn-lg" data-a="socialAuth" data-v="Apple">${ic('apple', 15)}Continue with Apple</button>` : ''}</div>`;
+  ${hasProvider('google') ? `<button class="btn btn-secondary btn-lg" data-a="socialAuth" data-v="Google"><svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>${tr('Continue with {provider}', { provider: 'Google' })}</button>` : ''}
+  ${hasProvider('azure') ? `<button class="btn btn-secondary btn-lg" data-a="socialAuth" data-v="Microsoft"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect width="6.4" height="6.4" fill="#F25022"/><rect x="7.6" width="6.4" height="6.4" fill="#7FBA00"/><rect y="7.6" width="6.4" height="6.4" fill="#00A4EF"/><rect x="7.6" y="7.6" width="6.4" height="6.4" fill="#FFB900"/></svg>${tr('Continue with {provider}', { provider: 'Microsoft' })}</button>` : ''}
+  ${hasProvider('apple') ? `<button class="btn btn-secondary btn-lg" data-a="socialAuth" data-v="Apple">${ic('apple', 15)}${tr('Continue with {provider}', { provider: 'Apple' })}</button>` : ''}</div>`;
 export const ferr = k => (S.ui.errors[k] ? `<span class="err" id="${k}-err">${ic('circle-alert', 12)}${S.ui.errors[k]}</span>` : '');
 export const icls = k => (S.ui.errors[k] ? 'is-error' : '');
 export function renderAuth() {
@@ -29,53 +38,53 @@ export function renderAuth() {
   if (s === 'login')
     return authShell(
       `<form class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}" data-submit="doLogin" novalidate>
-    <div style="display:flex;justify-content:center">${LOGO(30)}</div><h1>Welcome back</h1><p class="sub">Sign in to your workspace</p>
+    <div style="display:flex;justify-content:center">${LOGO(30)}</div><h1>${tr('Welcome back')}</h1><p class="sub">${tr('Sign in to your workspace')}</p>
     ${e.login ? `<div class="alert danger" role="alert">${ic('circle-alert', 15)}<span>${e.login}</span></div>` : ''}
-    <div class="field"><label class="label" for="l-email">Email</label><input class="input input-lg ${icls('email')}" id="l-email" type="email" value="${esc(f.email)}" autocomplete="email" aria-invalid="${!!e.email}" aria-describedby="email-err">${ferr('email')}</div>
-    <div class="field"><div class="row"><label class="label" for="l-pw">Password</label><span class="sp"></span><button type="button" class="link" style="font-size:12.5px" data-a="auth" data-v="forgot">Forgot password?</button></div>
-      <div class="inwrap"><input class="input input-lg ${icls('pw')}" id="l-pw" type="${S.ui.showPw ? 'text' : 'password'}" autocomplete="current-password" style="padding-right:38px" aria-invalid="${!!e.pw}"><button type="button" class="ibtn ibtn-sm" style="position:absolute;right:5px" data-a="toggleShowPw" aria-label="${S.ui.showPw ? 'Hide' : 'Show'} password">${ic(S.ui.showPw ? 'eye-off' : 'eye', 15)}</button></div>${ferr('pw')}</div>
-    <button class="btn btn-primary btn-lg btn-block" data-a="doLogin" id="login-btn">Sign in</button>
-    ${hasSocial() ? `<div class="or">or</div>${socialBtns()}` : ''}
-    <p class="auth-foot">Don't have an account? <button type="button" class="link" data-a="auth" data-v="signup">Sign up</button></p></form>`,
-      `<button class="btn btn-ghost btn-sm" data-a="auth" data-v="signup">Sign up</button>`,
+    <div class="field"><label class="label" for="l-email">${tr('Email')}</label><input class="input input-lg ${icls('email')}" id="l-email" type="email" value="${esc(f.email)}" autocomplete="email" aria-invalid="${!!e.email}" aria-describedby="email-err">${ferr('email')}</div>
+    <div class="field"><div class="row"><label class="label" for="l-pw">${tr('Password')}</label><span class="sp"></span><button type="button" class="link" style="font-size:12.5px" data-a="auth" data-v="forgot">${tr('Forgot password?')}</button></div>
+      <div class="inwrap"><input class="input input-lg ${icls('pw')}" id="l-pw" type="${S.ui.showPw ? 'text' : 'password'}" autocomplete="current-password" style="padding-right:38px" aria-invalid="${!!e.pw}"><button type="button" class="ibtn ibtn-sm" style="position:absolute;right:5px" data-a="toggleShowPw" aria-label="${S.ui.showPw ? tr('Hide password') : tr('Show password')}">${ic(S.ui.showPw ? 'eye-off' : 'eye', 15)}</button></div>${ferr('pw')}</div>
+    <button class="btn btn-primary btn-lg btn-block" data-a="doLogin" id="login-btn">${tr('Sign in')}</button>
+    ${hasSocial() ? `<div class="or">${tr('or')}</div>${socialBtns()}` : ''}
+    <p class="auth-foot">${tr("Don't have an account?")} <button type="button" class="link" data-a="auth" data-v="signup">${tr('Sign up')}</button></p></form>`,
+      `<button class="btn btn-ghost btn-sm" data-a="auth" data-v="signup">${tr('Sign up')}</button>`,
     );
   if (s === 'signup')
     return authShell(
       `<form class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}" data-submit="doSignup" novalidate>
-    <div style="display:flex;justify-content:center">${LOGO(30)}</div><h1>Create your account</h1><p class="sub">Set up your workspace in a couple of minutes.</p>
-    ${hasSocial() ? `${socialBtns()}<div class="or">or sign up with email</div>` : ''}
-    <div class="field"><label class="label" for="s-name">Full name</label><input class="input input-lg ${icls('name')}" id="s-name" value="${esc(f.name)}" autocomplete="name" placeholder="Your name">${ferr('name')}</div>
-    <div class="field"><label class="label" for="s-email">Email</label><input class="input input-lg ${icls('email')}" id="s-email" type="email" value="" autocomplete="email" placeholder="you@company.com">${ferr('email')}</div>
-    <div class="field"><label class="label" for="s-pw">Password</label><input class="input input-lg ${icls('pw')}" id="s-pw" type="password" data-in="pwStrength" value="${esc(S.ui.pwNew || '')}" autocomplete="new-password">${strengthMeter(S.ui.pwNew || '')}${ferr('pw') || '<span class="hint">At least 10 characters with a number or symbol.</span>'}</div>
-    <button class="btn btn-primary btn-lg btn-block" data-a="doSignup" id="signup-btn">Create account</button>
-    <p class="auth-foot">Already have an account? <button type="button" class="link" data-a="auth" data-v="login">Sign in</button></p></form>`,
-      `<button class="btn btn-ghost btn-sm" data-a="auth" data-v="login">Log in</button>`,
+    <div style="display:flex;justify-content:center">${LOGO(30)}</div><h1>${tr('Create your account')}</h1><p class="sub">${tr('Set up your workspace in a couple of minutes.')}</p>
+    ${hasSocial() ? `${socialBtns()}<div class="or">${tr('or sign up with email')}</div>` : ''}
+    <div class="field"><label class="label" for="s-name">${tr('Full name')}</label><input class="input input-lg ${icls('name')}" id="s-name" value="${esc(f.name)}" autocomplete="name" placeholder="${tr('Your name')}">${ferr('name')}</div>
+    <div class="field"><label class="label" for="s-email">${tr('Email')}</label><input class="input input-lg ${icls('email')}" id="s-email" type="email" value="" autocomplete="email" placeholder="you@company.com">${ferr('email')}</div>
+    <div class="field"><label class="label" for="s-pw">${tr('Password')}</label><input class="input input-lg ${icls('pw')}" id="s-pw" type="password" data-in="pwStrength" value="${esc(S.ui.pwNew || '')}" autocomplete="new-password">${strengthMeter(S.ui.pwNew || '')}${ferr('pw') || `<span class="hint">${tr('At least 10 characters with a number or symbol.')}</span>`}</div>
+    <button class="btn btn-primary btn-lg btn-block" data-a="doSignup" id="signup-btn">${tr('Create account')}</button>
+    <p class="auth-foot">${tr('Already have an account?')} <button type="button" class="link" data-a="auth" data-v="login">${tr('Sign in')}</button></p></form>`,
+      `<button class="btn btn-ghost btn-sm" data-a="auth" data-v="login">${tr('Log in')}</button>`,
     );
   if (s === 'forgot')
     return authShell(`<form class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}" data-submit="doForgot" novalidate>
-    <div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--accent);width:44px;height:44px;border-radius:11px">${ic('key-round', 20)}</span></div><h1>Reset your password</h1><p class="sub">Enter your account email and we'll send you a reset link.</p>
-    <div class="field"><label class="label" for="f-email">Email</label><input class="input input-lg ${icls('email')}" id="f-email" type="email" value="${esc(f.email)}" autocomplete="email">${ferr('email')}</div>
-    <button class="btn btn-primary btn-lg btn-block" data-a="doForgot" id="forgot-btn">Send reset link</button>
-    <p class="auth-foot"><button type="button" class="link row" style="display:inline-flex;gap:6px" data-a="auth" data-v="login">${ic('arrow-left', 14)}Back to sign in</button></p></form>`);
+    <div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--accent);width:44px;height:44px;border-radius:11px">${ic('key-round', 20)}</span></div><h1>${tr('Reset your password')}</h1><p class="sub">${tr("Enter your account email and we'll send you a reset link.")}</p>
+    <div class="field"><label class="label" for="f-email">${tr('Email')}</label><input class="input input-lg ${icls('email')}" id="f-email" type="email" value="${esc(f.email)}" autocomplete="email">${ferr('email')}</div>
+    <button class="btn btn-primary btn-lg btn-block" data-a="doForgot" id="forgot-btn">${tr('Send reset link')}</button>
+    <p class="auth-foot"><button type="button" class="link row" style="display:inline-flex;gap:6px" data-a="auth" data-v="login">${ic('arrow-left', 14)}${tr('Back to sign in')}</button></p></form>`);
   if (s === 'forgot-sent')
-    return authShell(`<div class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--green);width:44px;height:44px;border-radius:11px">${ic('mail-check', 20)}</span></div><h1>Check your email</h1><p class="sub">We sent a reset link to <b style="color:var(--text)">${esc(f.email)}</b>. Open it on this device to choose a new password.</p>
-    <div class="alert info">${ic('info', 14)}<span>If no account uses this address, no email is sent.</span></div>
-    <p class="auth-foot">Didn't get it? <button class="link" data-a="resend" data-v="reset">Resend email</button></p><p class="auth-foot"><button class="link row" style="display:inline-flex;gap:6px" data-a="auth" data-v="login">${ic('arrow-left', 14)}Back to sign in</button></p></div>`);
+    return authShell(`<div class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--green);width:44px;height:44px;border-radius:11px">${ic('mail-check', 20)}</span></div><h1>${tr('Check your email')}</h1><p class="sub">${tr('We sent a reset link to {email}. Open it on this device to choose a new password.', { email: `<b style="color:var(--text)">${esc(f.email)}</b>` })}</p>
+    <div class="alert info">${ic('info', 14)}<span>${tr('If no account uses this address, no email is sent.')}</span></div>
+    <p class="auth-foot">${tr("Didn't get it?")} <button class="link" data-a="resend" data-v="reset">${tr('Resend email')}</button></p><p class="auth-foot"><button class="link row" style="display:inline-flex;gap:6px" data-a="auth" data-v="login">${ic('arrow-left', 14)}${tr('Back to sign in')}</button></p></div>`);
   if (s === 'reset')
-    return authShell(`<form class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}" data-submit="doReset" novalidate><div style="display:flex;justify-content:center">${LOGO(30)}</div><h1>Choose a new password</h1><p class="sub">for ${esc(f.email)}</p>
-    <div class="field"><label class="label" for="r-pw">New password</label><input class="input input-lg ${icls('pw')}" id="r-pw" type="password" data-in="pwStrength" value="${esc(S.ui.pwNew || '')}" autocomplete="new-password">${strengthMeter(S.ui.pwNew || '')}${ferr('pw')}</div>
-    <div class="field"><label class="label" for="r-pw2">Confirm password</label><input class="input input-lg ${icls('pw2')}" id="r-pw2" type="password" autocomplete="new-password">${ferr('pw2')}</div>
-    <button class="btn btn-primary btn-lg btn-block" data-a="doReset" id="reset-btn">Reset password</button></form>`);
+    return authShell(`<form class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}" data-submit="doReset" novalidate><div style="display:flex;justify-content:center">${LOGO(30)}</div><h1>${tr('Choose a new password')}</h1><p class="sub">${tr('for {email}', { email: esc(f.email) })}</p>
+    <div class="field"><label class="label" for="r-pw">${tr('New password')}</label><input class="input input-lg ${icls('pw')}" id="r-pw" type="password" data-in="pwStrength" value="${esc(S.ui.pwNew || '')}" autocomplete="new-password">${strengthMeter(S.ui.pwNew || '')}${ferr('pw')}</div>
+    <div class="field"><label class="label" for="r-pw2">${tr('Confirm password')}</label><input class="input input-lg ${icls('pw2')}" id="r-pw2" type="password" autocomplete="new-password">${ferr('pw2')}</div>
+    <button class="btn btn-primary btn-lg btn-block" data-a="doReset" id="reset-btn">${tr('Reset password')}</button></form>`);
   if (s === 'reset-done')
     return authShell(
-      `<div class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--green);width:44px;height:44px;border-radius:11px">${ic('circle-check', 20)}</span></div><h1>Password updated</h1><p class="sub">Your new password is active.</p><button class="btn btn-primary btn-lg btn-block" data-a="afterReset" id="after-reset-btn">Continue</button></div>`,
+      `<div class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--green);width:44px;height:44px;border-radius:11px">${ic('circle-check', 20)}</span></div><h1>${tr('Password updated')}</h1><p class="sub">${tr('Your new password is active.')}</p><button class="btn btn-primary btn-lg btn-block" data-a="afterReset" id="after-reset-btn">${tr('Continue')}</button></div>`,
     );
   if (s === 'verify')
-    return authShell(`<div class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--accent);width:44px;height:44px;border-radius:11px">${ic('mail', 20)}</span></div><h1>Verify your email</h1><p class="sub">We sent a verification link to <b style="color:var(--text)">${esc(f.email)}</b>. Click it to activate your account.</p>
-    <div class="panel" style="padding:12px 14px;display:flex;gap:10px;align-items:center"><span class="sk" style="width:8px;height:8px;border-radius:50%;animation-duration:1.1s"></span><span class="muted" style="font-size:13px">Waiting for verification…</span></div>
-    <button class="btn btn-primary btn-lg btn-block" data-a="verified" id="verified-btn">I've verified my email</button>
-    <button class="btn btn-secondary btn-lg btn-block" data-a="resend" data-v="verify" id="resend-btn" ${S.ui.resendT > 0 ? 'disabled' : ''}>${S.ui.resendT > 0 ? `Resend email in <span class="num" id="resend-t">${S.ui.resendT}</span>s` : 'Resend email'}</button>
-    <p class="auth-foot">Wrong email? <button class="link" data-a="auth" data-v="signup">Change it</button></p></div>`);
+    return authShell(`<div class="auth-card${S.ui.fx.auth ? ' fx-auth' : ''}"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--accent);width:44px;height:44px;border-radius:11px">${ic('mail', 20)}</span></div><h1>${tr('Verify your email')}</h1><p class="sub">${tr('We sent a verification link to {email}. Click it to activate your account.', { email: `<b style="color:var(--text)">${esc(f.email)}</b>` })}</p>
+    <div class="panel" style="padding:12px 14px;display:flex;gap:10px;align-items:center"><span class="sk" style="width:8px;height:8px;border-radius:50%;animation-duration:1.1s"></span><span class="muted" style="font-size:13px">${tr('Waiting for verification…')}</span></div>
+    <button class="btn btn-primary btn-lg btn-block" data-a="verified" id="verified-btn">${tr("I've verified my email")}</button>
+    <button class="btn btn-secondary btn-lg btn-block" data-a="resend" data-v="verify" id="resend-btn" ${S.ui.resendT > 0 ? 'disabled' : ''}>${S.ui.resendT > 0 ? tr('Resend email in {s}s', { s: `<span class="num" id="resend-t">${S.ui.resendT}</span>` }) : tr('Resend email')}</button>
+    <p class="auth-foot">${tr('Wrong email?')} <button class="link" data-a="auth" data-v="signup">${tr('Change it')}</button></p></div>`);
   return '';
 }
 
@@ -84,66 +93,66 @@ export function renderOnboarding() {
   const st = S.ui.onb;
   const o = S.ui.onbData;
   const N = 6;
-  const nav = (next = 'Continue', skip = false) =>
-    `<div class="row" style="margin-top:6px">${st > 0 && st < 5 ? `<button class="btn btn-ghost" data-a="onbBack">${ic('arrow-left', 14)}Back</button>` : ''}<span class="sp"></span>${skip ? `<button class="btn btn-ghost" data-a="onbNext" data-skip="1">Skip for now</button>` : ''}<button class="btn btn-primary btn-lg" data-a="onbNext" id="onb-next">${next}${ic('arrow-right', 15)}</button></div>`;
+  const nav = (next = tr('Continue'), skip = false) =>
+    `<div class="row" style="margin-top:6px">${st > 0 && st < 5 ? `<button class="btn btn-ghost" data-a="onbBack">${ic('arrow-left', 14)}${tr('Back')}</button>` : ''}<span class="sp"></span>${skip ? `<button class="btn btn-ghost" data-a="onbNext" data-skip="1">${tr('Skip for now')}</button>` : ''}<button class="btn btn-primary btn-lg" data-a="onbNext" id="onb-next">${next}${ic('arrow-right', 15)}</button></div>`;
   const opt = (k, v, icon, n, s) =>
     `<button class="opt ${o[k] === v ? 'on' : ''}" role="radio" aria-checked="${o[k] === v}" data-a="onbSet" data-k="${k}" data-v="${v}">${ic(icon, 18)}<b>${n}</b>${s ? `<span>${s}</span>` : ''}</button>`;
   let body;
   if (st === 0)
-    body = `<h1>What are you working on?</h1><p class="sub">We'll tailor templates and views to fit. You can change this later.</p><div class="opts" role="radiogroup">${[
-      ['product', 'target', 'Product', 'Roadmaps & launches'],
-      ['design', 'palette', 'Design', 'Reviews & handoff'],
-      ['marketing', 'megaphone', 'Marketing', 'Campaigns & content'],
-      ['engineering', 'code', 'Engineering', 'Sprints & releases'],
-      ['personal', 'user', 'Personal', 'Goals & side projects'],
-      ['other', 'sparkles', 'Other', 'Something else'],
+    body = `<h1>${tr('What are you working on?')}</h1><p class="sub">${tr("We'll tailor templates and views to fit. You can change this later.")}</p><div class="opts" role="radiogroup">${[
+      ['product', 'target', tr('Product'), tr('Roadmaps & launches')],
+      ['design', 'palette', tr('Design'), tr('Reviews & handoff')],
+      ['marketing', 'megaphone', tr('Marketing'), tr('Campaigns & content')],
+      ['engineering', 'code', tr('Engineering'), tr('Sprints & releases')],
+      ['personal', 'user', tr('Personal'), tr('Goals & side projects')],
+      ['other', 'sparkles', tr('Other'), tr('Something else')],
     ]
       .map(x => opt('use', ...x))
       .join('')}</div>${nav()}`;
   if (st === 1) {
     const e = S.ui.errors.ws;
-    body = `<h1>Create your workspace</h1><p class="sub">A workspace is where your team's projects live.</p>
-    <div class="field"><label class="label" for="o-ws">Workspace name</label><input class="input input-lg ${e ? 'is-error' : ''}" id="o-ws" data-in="onbWs" value="${esc(o.ws)}" placeholder="e.g. Gr8r Studio" autofocus>${e ? `<span class="err">${ic('circle-alert', 12)}${e}</span>` : ''}</div>
-    <div class="field"><label class="label" for="o-url">Workspace handle</label><input class="input input-lg" id="o-url" value="${esc(o.url || '')}" data-in="onbUrl" placeholder="my-workspace" autocapitalize="none" spellcheck="false">${
+    body = `<h1>${tr('Create your workspace')}</h1><p class="sub">${tr("A workspace is where your team's projects live.")}</p>
+    <div class="field"><label class="label" for="o-ws">${tr('Workspace name')}</label><input class="input input-lg ${e ? 'is-error' : ''}" id="o-ws" data-in="onbWs" value="${esc(o.ws)}" placeholder="${tr('e.g. Gr8r Studio')}" autofocus>${e ? `<span class="err">${ic('circle-alert', 12)}${e}</span>` : ''}</div>
+    <div class="field"><label class="label" for="o-url">${tr('Workspace handle')}</label><input class="input input-lg" id="o-url" value="${esc(o.url || '')}" data-in="onbUrl" placeholder="${tr('my-workspace')}" autocapitalize="none" spellcheck="false">${
       o.url && o.urlOk === true
-        ? `<span class="hint" style="color:var(--green);display:flex;gap:4px;align-items:center">${ic('check', 12)}${esc(o.url)} is available</span>`
+        ? `<span class="hint" style="color:var(--green);display:flex;gap:4px;align-items:center">${ic('check', 12)}${tr('{handle} is available', { handle: esc(o.url) })}</span>`
         : o.url && o.urlOk === false
-          ? `<span class="hint" style="display:flex;gap:4px;align-items:center">${ic('info', 12)}${esc(o.url)} is taken. We'll use a similar handle.</span>`
-          : '<span class="hint">A short unique name for this workspace: lowercase letters, numbers and dashes.</span>'
+          ? `<span class="hint" style="display:flex;gap:4px;align-items:center">${ic('info', 12)}${tr("{handle} is taken. We'll use a similar handle.", { handle: esc(o.url) })}</span>`
+          : `<span class="hint">${tr('A short unique name for this workspace: lowercase letters, numbers and dashes.')}</span>`
     }</div>${nav()}`;
   }
   if (st === 2)
-    body = `<h1>How does your team work?</h1><p class="sub">We'll set your default project view.</p><div class="opts" role="radiogroup" style="grid-template-columns:repeat(2,minmax(0,1fr))">${[
-      ['kanban', 'square-kanban', 'Boards', 'Move cards through stages'],
-      ['list', 'list-checks', 'Lists', 'Checklists and priorities'],
-      ['timeline', 'chart-gantt', 'Timelines', 'Plan with dates & dependencies'],
-      ['table', 'table-2', 'Tables', 'Spreadsheet-style tracking'],
+    body = `<h1>${tr('How does your team work?')}</h1><p class="sub">${tr("We'll set your default project view.")}</p><div class="opts" role="radiogroup" style="grid-template-columns:repeat(2,minmax(0,1fr))">${[
+      ['kanban', 'square-kanban', tr('Boards'), tr('Move cards through stages')],
+      ['list', 'list-checks', tr('Lists'), tr('Checklists and priorities')],
+      ['timeline', 'chart-gantt', tr('Timelines'), tr('Plan with dates & dependencies')],
+      ['table', 'table-2', tr('Tables'), tr('Spreadsheet-style tracking')],
     ]
       .map(x => opt('team', ...x))
       .join('')}</div>
-    <div class="field"><span class="label">Team size</span><div class="seg" style="width:fit-content">${['Just me', '2-10', '11-50', '51-200', '200+'].map(s => `<button class="${o.size === s ? 'on' : ''}" data-a="onbSet" data-k="size" data-v="${s}">${s}</button>`).join('')}</div></div>${nav()}`;
+    <div class="field"><span class="label">${tr('Team size')}</span><div class="seg" style="width:fit-content">${['Just me', '2-10', '11-50', '51-200', '200+'].map(s => `<button class="${o.size === s ? 'on' : ''}" data-a="onbSet" data-k="size" data-v="${s}">${s === 'Just me' ? tr('Just me') : s}</button>`).join('')}</div></div>${nav()}`;
   if (st === 3)
-    body = `<h1>Create your first project</h1><p class="sub">Start from a template or a blank project.</p><div class="field"><label class="label" for="o-proj">Project name</label><input class="input input-lg" id="o-proj" data-in="onbProj" value="${esc(o.proj)}" autofocus></div><div class="tmpls" role="radiogroup">${TEMPLATES.filter(
+    body = `<h1>${tr('Create your first project')}</h1><p class="sub">${tr('Start from a template or a blank project.')}</p><div class="field"><label class="label" for="o-proj">${tr('Project name')}</label><input class="input input-lg" id="o-proj" data-in="onbProj" value="${esc(o.proj)}" autofocus></div><div class="tmpls" role="radiogroup">${TEMPLATES.filter(
       t => t.id !== 'blank',
     )
-      .map(t => opt('tmpl', t.id, t.icon, t.name, t.tasks.length + ' starter tasks'))
+      .map(t => opt('tmpl', t.id, t.icon, tr(t.name), trn('{n} starter task', '{n} starter tasks', t.tasks.length)))
       .join('')}</div>${nav()}`;
   if (st === 4)
-    body = `<h1>Invite your team</h1><p class="sub">Add teammates by email. They join this workspace when they sign up with that address.</p><div class="col" style="gap:8px">${[0, 1, 2].map(i => `<input class="input input-lg" id="o-inv-${i}" placeholder="teammate@company.com" type="email" value="${esc((o.invites || '').split(',')[i] || '')}" data-in="onbInv" data-i="${i}" aria-label="Teammate email ${i + 1}">`).join('')}</div><button class="btn btn-ghost btn-sm" style="align-self:flex-start" data-a="copyInviteLink">${ic('link', 13)}Copy the sign-up link to share</button>${nav('Add teammates', true)}`;
+    body = `<h1>${tr('Invite your team')}</h1><p class="sub">${tr('Add teammates by email. They join this workspace when they sign up with that address.')}</p><div class="col" style="gap:8px">${[0, 1, 2].map(i => `<input class="input input-lg" id="o-inv-${i}" placeholder="teammate@company.com" type="email" value="${esc((o.invites || '').split(',')[i] || '')}" data-in="onbInv" data-i="${i}" aria-label="${tr('Teammate email {n}', { n: i + 1 })}">`).join('')}</div><button class="btn btn-ghost btn-sm" style="align-self:flex-start" data-a="copyInviteLink">${ic('link', 13)}${tr('Copy the sign-up link to share')}</button>${nav(tr('Add teammates'), true)}`;
   if (st === 5) {
     const n = (o.invites || '').split(',').filter(x => x.includes('@')).length;
-    body = `<div style="display:flex;justify-content:center"><span class="ftype ready-badge" style="--c:var(--green);width:48px;height:48px;border-radius:12px">${ic('circle-check', 22)}</span></div><h1>Ready to create your workspace</h1><p class="sub">Here's what will be set up for you.</p>
+    body = `<div style="display:flex;justify-content:center"><span class="ftype ready-badge" style="--c:var(--green);width:48px;height:48px;border-radius:12px">${ic('circle-check', 22)}</span></div><h1>${tr('Ready to create your workspace')}</h1><p class="sub">${tr("Here's what will be set up for you.")}</p>
     <div class="panel">${[
-      ['building-2', `Workspace “${esc(o.ws || 'My Workspace')}”`, esc(o.url || 'workspace')],
+      ['building-2', tr('Workspace “{name}”', { name: esc(o.ws || tr('My Workspace')) }), esc(o.url || tr('workspace'))],
       [
         TEMPLATES.find(t => t.id === o.tmpl)?.icon || 'folder',
-        `Project “${esc(o.proj)}”`,
-        `${TEMPLATES.find(t => t.id === o.tmpl)?.tasks.length || 0} starter tasks · ${{ kanban: 'Board', list: 'List', timeline: 'Timeline', table: 'Table' }[o.team]} view`,
+        tr('Project “{name}”', { name: esc(o.proj) }),
+        `${trn('{n} starter task', '{n} starter tasks', TEMPLATES.find(t => t.id === o.tmpl)?.tasks.length || 0)} · ${{ kanban: tr('Board view'), list: tr('List view'), timeline: tr('Timeline view'), table: tr('Table view') }[o.team]}`,
       ],
       [
         'user-plus',
-        n ? `${n} teammate${n > 1 ? 's' : ''} invited` : 'No invites yet',
-        n ? 'They join when they sign up with that email' : 'Invite people any time from the sidebar',
+        n ? trn('{n} teammate invited', '{n} teammates invited', n) : tr('No invites yet'),
+        n ? tr('They join when they sign up with that email') : tr('Invite people any time from the sidebar'),
       ],
     ]
       .map(
@@ -151,14 +160,14 @@ export function renderOnboarding() {
           `<div class="row ready-row" style="padding:12px 14px;border-top:1px solid var(--divider);gap:12px"><span class="ftype" style="--c:var(--accent)">${ic(i, 14)}</span><div class="grow"><div style="font-weight:500">${t}</div><div class="faint" style="font-size:12px">${s}</div></div><span class="ok" style="color:var(--green);display:inline-flex">${ic('check', 15)}</span></div>`,
       )
       .join('')}</div>
-    <button class="btn btn-primary btn-lg btn-block" data-a="onbFinish" id="onb-finish">Create workspace${ic('arrow-right', 15)}</button>`;
+    <button class="btn btn-primary btn-lg btn-block" data-a="onbFinish" id="onb-finish">${tr('Create workspace')}${ic('arrow-right', 15)}</button>`;
   }
   return authShell(
     `<div class="auth-card onb${S.ui.fx.step ? ' fx-step' : ''}" style="max-width:${st === 5 ? 440 : 560}px">
-    <div class="steps" aria-label="Step ${st + 1} of ${N}">${Array.from({ length: N }, (_, i) => `<i class="${i <= st ? 'on' : ''} ${i === st ? 'cur' : ''}"></i>`).join('')}</div>
-    <div class="faint" style="text-align:center;font-size:12px">Step ${st + 1} of ${N}</div>
+    <div class="steps" aria-label="${tr('Step {n} of {total}', { n: st + 1, total: N })}">${Array.from({ length: N }, (_, i) => `<i class="${i <= st ? 'on' : ''} ${i === st ? 'cur' : ''}"></i>`).join('')}</div>
+    <div class="faint" style="text-align:center;font-size:12px">${tr('Step {n} of {total}', { n: st + 1, total: N })}</div>
     ${body}</div>`,
-    `<button class="btn btn-ghost btn-sm" data-a="onbExit">${S.data.me ? 'Exit setup' : 'Sign out'}</button>`,
+    `<button class="btn btn-ghost btn-sm" data-a="onbExit">${S.data.me ? tr('Exit setup') : tr('Sign out')}</button>`,
   );
 }
 
@@ -167,17 +176,17 @@ export function renderOnboarding() {
 export function renderBoot() {
   if (S.ui.bootError)
     return authShell(
-      `<div class="auth-card"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--red);width:44px;height:44px;border-radius:11px">${ic('cloud-off', 20)}</span></div><h1>Couldn't load your workspace</h1><p class="sub">${esc(S.ui.bootError)}</p>
-      <button class="btn btn-primary btn-lg btn-block" data-a="retryBoot">Try again</button>
-      <button class="btn btn-secondary btn-lg btn-block" data-a="signOut">Sign out</button></div>`,
+      `<div class="auth-card"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--red);width:44px;height:44px;border-radius:11px">${ic('cloud-off', 20)}</span></div><h1>${tr("Couldn't load your workspace")}</h1><p class="sub">${esc(S.ui.bootError)}</p>
+      <button class="btn btn-primary btn-lg btn-block" data-a="retryBoot">${tr('Try again')}</button>
+      <button class="btn btn-secondary btn-lg btn-block" data-a="signOut">${tr('Sign out')}</button></div>`,
     );
-  return `<div class="auth" aria-busy="true"><div class="auth-c"><div class="auth-card" style="align-items:center;gap:14px;background:none;border:0;box-shadow:none" role="status">${LOGO(34)}<span class="muted" style="font-size:13px">Loading your workspace…</span></div></div></div>`;
+  return `<div class="auth" aria-busy="true"><div class="auth-c"><div class="auth-card" style="align-items:center;gap:14px;background:none;border:0;box-shadow:none" role="status">${LOGO(34)}<span class="muted" style="font-size:13px">${tr('Loading your workspace…')}</span></div></div></div>`;
 }
 /* Shown when the app was built without Supabase credentials: nothing can work until they are set. */
 export function renderSetup() {
   return authShell(
-    `<div class="auth-card" style="max-width:520px"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--amber);width:44px;height:44px;border-radius:11px">${ic('database', 20)}</span></div><h1>Connect a database</h1><p class="sub">This deployment has no Supabase project configured yet, so there is nowhere to sign in or store data.</p>
-    <div class="panel" style="padding:14px 16px;font-size:13px;line-height:1.6"><ol style="margin:0;padding-left:18px"><li>Create a Supabase project and apply the migrations in <code>supabase/migrations</code>.</li><li>Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> in the environment (<code>.env.local</code> locally, Project Settings → Environment Variables on Vercel).</li><li>Rebuild and redeploy.</li></ol></div>
-    <p class="hint" style="text-align:center">Step-by-step instructions are in <code>docs/SETUP.md</code>.</p></div>`,
+    `<div class="auth-card" style="max-width:520px"><div style="display:flex;justify-content:center"><span class="ftype" style="--c:var(--amber);width:44px;height:44px;border-radius:11px">${ic('database', 20)}</span></div><h1>${tr('Connect a database')}</h1><p class="sub">${tr('This deployment has no Supabase project configured yet, so there is nowhere to sign in or store data.')}</p>
+    <div class="panel" style="padding:14px 16px;font-size:13px;line-height:1.6"><ol style="margin:0;padding-left:18px"><li>${tr('Create a Supabase project and apply the migrations in {path}.', { path: '<code>supabase/migrations</code>' })}</li><li>${tr('Set {url} and {key} in the environment ({file} locally, Project Settings → Environment Variables on Vercel).', { url: '<code>VITE_SUPABASE_URL</code>', key: '<code>VITE_SUPABASE_PUBLISHABLE_KEY</code>', file: '<code>.env.local</code>' })}</li><li>${tr('Rebuild and redeploy.')}</li></ol></div>
+    <p class="hint" style="text-align:center">${tr('Step-by-step instructions are in {file}.', { file: '<code>docs/SETUP.md</code>' })}</p></div>`,
   );
 }

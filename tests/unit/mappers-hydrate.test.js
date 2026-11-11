@@ -135,7 +135,17 @@ describe('hydrate', () => {
       { id: ids.c1, task: ids.t1, by: ids.m2, at: ms('2026-03-06T00:00:00+00:00'), text: 'Looks good @Ana', re: { '👍': [ids.me, ids.m2], '🎉': [ids.me] } },
     ]);
     expect(data.activity).toEqual([
-      { id: ids.a1, by: ids.me, verb: 'completed', task: ids.t1, project: ids.p1, at: ms('2026-03-09T09:00:00+00:00'), extra: 'x' },
+      {
+        id: ids.a1,
+        by: ids.me,
+        verb: 'completed',
+        task: ids.t1,
+        project: ids.p1,
+        at: ms('2026-03-09T09:00:00+00:00'),
+        extra: 'x',
+        label: '',
+        projectName: null,
+      },
     ]);
     expect(data.events).toEqual([{ id: ids.e1, title: 'Launch', date: '2026-04-01', time: '09:30', project: ids.p1 }]);
     expect(data.savedViews).toEqual([
