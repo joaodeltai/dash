@@ -261,7 +261,8 @@ begin
   if n is distinct from 2 then fails := array_append(fails, (('service-reads-collectors=' || n))::text); end if;
   -- histórico da conta X com resultado conhecido (ver item 7)
   insert into public.social_snapshots (account_id, date, followers, source) values
-    (ax, td - 40, 1000, 'apify'), (ax, td - 30, 1200, 'apify'), (ax, td - 10, 1500, 'apify'), (ax, td - 7, 1600, 'apify'),
+    (ax, td - 40, 1000, 'apify'), (ax, td - 30, 1200, 'apify'), (ax, td - 29, 1250, 'apify'), (ax, td - 10, 1500, 'apify'),
+    (ax, td - 7, 1600, 'apify'), (ax, td - 6, 1650, 'apify'), -- td-29 e td-6 ficam logo depois das fronteiras: não podem virar base
     (ax, td + 2, 9999, 'apify'),            -- data futura: fora da conta
     (ax, td - 1, null, 'apify')             -- sem audiência: fora da conta
   on conflict (account_id, date) do update set followers = excluded.followers, source = excluded.source;
@@ -306,7 +307,7 @@ begin
 
   -- ---------------------------------------------------------------
   -- 7. crescimento com resultado conhecido
-  --    X (Acme): 1000 há 40 dias, 1200 há 30, 1500 há 10, 1600 há 7, 1700 há 3, 1800 hoje
+  --    X (Acme): 1000 há 40 dias, 1200 há 30, 1250 há 29, 1500 há 10, 1600 há 7, 1650 há 6, 1700 há 3, 1800 hoje
   --    Y (Acme): 500 há 5 dias, 650 hoje (menos de 7 dias de histórico: a base é a primeira fotografia)
   --    Z (Beta): sem fotografias
   -- ---------------------------------------------------------------
