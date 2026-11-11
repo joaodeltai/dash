@@ -10,7 +10,7 @@
      SOCIAL_COLLECT_SECRET      shared secret the caller must send
      APIFY_TOKEN                Apify API token
      GA4_SERVICE_ACCOUNT_JSON   Google service account key (only when a GA4 collector exists)
-   Optional: APIFY_API_BASE and GA4_API_BASE (to point at a stand-in during tests), SOCIAL_TIME_ZONE.
+   Optional: APIFY_API_BASE and GA4_API_BASE (to point at a stand-in during tests).
 
    The function is deployed with --no-verify-jwt: the caller is authorised by the shared secret, checked below. */
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -60,7 +60,8 @@ Deno.serve(async req => {
     apifyBase: Deno.env.get('APIFY_API_BASE') || 'https://api.apify.com',
     ga4ServiceAccount: Deno.env.get('GA4_SERVICE_ACCOUNT_JSON') || undefined,
     ga4Base: Deno.env.get('GA4_API_BASE') || 'https://analyticsdata.googleapis.com',
-    timeZone: Deno.env.get('SOCIAL_TIME_ZONE') || 'America/Sao_Paulo',
+    // fixed: the growth views count "today" in this same time zone
+    timeZone: 'America/Sao_Paulo',
   };
 
   try {

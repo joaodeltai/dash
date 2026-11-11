@@ -67,11 +67,17 @@ No painel do Supabase, em **Edge Functions → Secrets**, ou pela CLI:
 
 ```bash
 # um segredo longo e aleatório, que só a função e o agendador conhecem
-openssl rand -hex 32          # guarde o valor: ele é usado de novo no passo 4
+openssl rand -hex 32          # guarde o valor num cofre de senhas: ele é usado de novo nos passos 3 e 4
 
 supabase secrets set --project-ref <ref-do-projeto> \
   SOCIAL_COLLECT_SECRET=<valor gerado acima> \
   APIFY_TOKEN=<token da Apify>
+```
+
+Os comandos `curl` deste guia leem o segredo da variável `SOCIAL_COLLECT_SECRET` do terminal. Para defini-la sem que o valor apareça na tela nem fique no histórico:
+
+```bash
+read -rs SOCIAL_COLLECT_SECRET && export SOCIAL_COLLECT_SECRET     # cole o valor e tecle Enter
 ```
 
 | Secret                     | Obrigatório               | O que é                                                                                                                 |
@@ -79,7 +85,6 @@ supabase secrets set --project-ref <ref-do-projeto> \
 | `SOCIAL_COLLECT_SECRET`    | sim                       | Segredo compartilhado, com 16 caracteres ou mais. Quem chama a função precisa enviá-lo no cabeçalho `x-collect-secret`. |
 | `APIFY_TOKEN`              | sim, para redes via Apify | Token da API da Apify (Apify Console → Settings → API & Integrations).                                                  |
 | `GA4_SERVICE_ACCOUNT_JSON` | só para sites             | O arquivo JSON da conta de serviço do Google, inteiro, em uma linha. Ver [GA4](#ga4-sites).                             |
-| `SOCIAL_TIME_ZONE`         | não                       | Fuso que define "o dia" da fotografia. Padrão: `America/Sao_Paulo`.                                                     |
 
 `SUPABASE_URL` e a chave secreta do projeto já existem no ambiente de toda Edge Function; não é preciso criá-las.
 
@@ -92,13 +97,19 @@ supabase db push --dry-run     # deve listar só 20261111170127_social_networks.
 supabase db push
 ```
 
-A migration só cria objetos (confira com `grep -inE "\b(alter|drop|update|delete)\b"`: os `alter` são `enable row level security` nas tabelas novas). Para aplicar pelo servidor MCP do Supabase em vez da CLI, siga a nota de `docs/DATABASE.md` ("Criar uma nova migration") sobre ajustar a versão no histórico.
+A migration só cria objetos. Para conferir: `grep -ciE "\balter\b" supabase/migrations/20261111170127_social_networks.sql` dá 6 (os seis são `enable row level security` nas tabelas novas) e o mesmo comando com `drop` dá 0. As palavras `update` e `delete` aparecem só em `on delete cascade`, em gatilhos, concessões e políticas das tabelas novas. Para aplicar pelo servidor MCP do Supabase em vez da CLI, siga a nota de `docs/DATABASE.md` ("Criar uma nova migration") sobre ajustar a versão no histórico.
 
-Depois de aplicar, confira:
+Depois de aplicar, confira em produção com uma consulta que só lê:
 
-```bash
-psql "<url do banco>" -v ON_ERROR_STOP=1 -f tests/sql/social_networks.sql    # termina com NOTICE: PASS e não deixa nada no banco
+```sql
+select c.relname as tabela, c.relrowsecurity as rls,
+       (select count(*) from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname) as politicas
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'social\_%' order by 1;
+-- esperado: 6 tabelas, todas com rls = true; políticas: accounts 4, collect_runs 1, collectors 4, goals 4, posts 1, snapshots 4
 ```
+
+Os cenários de `tests/sql/social_networks.sql` (isolamento, upsert, crescimento) são para o banco **local**: eles criam usuários e workspaces de teste dentro de uma transação desfeita no fim. Não há necessidade de rodá-los em produção.
 
 O front pode ser publicado antes ou depois: sem a migration ele mostra o aviso de área não configurada.
 
@@ -110,7 +121,7 @@ supabase functions deploy social-collect --no-verify-jwt --project-ref <ref-do-p
 
 `--no-verify-jwt` é necessário: a função não recebe o token de um usuário, e sim o segredo compartilhado, que ela mesma confere. Sem o cabeçalho certo a resposta é `401`.
 
-Teste antes de agendar (ainda sem coletores, a resposta é `{"ok":true,"runs":[]}`):
+Teste antes de agendar. Ainda sem coletores, a resposta é `{"ok":true,"date":"AAAA-MM-DD","runs":[]}`, com a data do dia em Brasília:
 
 ```bash
 curl -sS -X POST "https://<ref-do-projeto>.supabase.co/functions/v1/social-collect" \
@@ -119,9 +130,9 @@ curl -sS -X POST "https://<ref-do-projeto>.supabase.co/functions/v1/social-colle
 
 ### 4. Agendar a coleta diária
 
-Abra `supabase/cron/social_collect_cron.sql`, troque os dois valores marcados com `<...>` (o endereço da função e o mesmo `SOCIAL_COLLECT_SECRET`) e rode o arquivo **no SQL Editor** do projeto. Não salve o arquivo com os valores preenchidos. O arquivo recusa rodar enquanto os marcadores estiverem lá, e pode ser rodado de novo para trocar um valor.
+Abra `supabase/cron/social_collect_cron.sql`, troque os dois valores marcados com `<...>` (o endereço da função e o mesmo `SOCIAL_COLLECT_SECRET`) e rode o arquivo **no SQL Editor** do projeto. Não salve o arquivo com os valores preenchidos e, depois de rodar, apague a consulta do histórico do SQL Editor (ela contém o segredo em texto). O arquivo recusa rodar enquanto os marcadores estiverem lá, e pode ser rodado de novo para trocar um valor.
 
-Ele liga `pg_cron` e `pg_net`, guarda o endereço e o segredo no Vault e agenda `social-collect-daily` para `0 9 * * *`. O `pg_cron` do Supabase conta em UTC, e 09:00 UTC é 06:00 em Brasília o ano todo. Os comandos de conferência e o de desligar (`cron.unschedule`) estão comentados no fim do arquivo.
+Ele liga `pg_cron` e `pg_net`, guarda o endereço e o segredo no Vault e agenda `social-collect-daily` para `0 9 * * *`. O `pg_cron` do Supabase conta em UTC, e 09:00 UTC é 06:00 em Brasília o ano todo. O agendador espera a resposta da função por até 300 s, de propósito mais do que a função pode levar. Os comandos de conferência e o de desligar (`cron.unschedule`) estão comentados no fim do arquivo.
 
 ### 5. Cadastrar os coletores
 
@@ -180,7 +191,7 @@ A conta é reconhecida sem diferenciar maiúsculas, com ou sem `@`, pelo usuári
 
 ### Exemplos
 
-Pontos de partida para três redes. Os nomes de campo foram conferidos na página pública de cada actor em novembro de 2026, mas **nenhum foi executado com uma conta real nesta entrega**: rode o actor uma vez no Apify Console com uma conta sua, compare a saída com o `field_map` e ajuste. Actors mudam de versão e de preço; confira o custo por execução na página do actor antes de agendar.
+Pontos de partida para três redes. Quem preparou esta entrega conferiu os nomes de campo na página pública de cada actor em novembro de 2026, mas **nenhum foi executado com uma conta real**: rode o actor uma vez no Apify Console com uma conta sua, compare a saída com o `field_map` e ajuste. Actors mudam de versão e de preço; confira o custo por execução na página do actor antes de agendar.
 
 ```sql
 -- Instagram · apify/instagram-profile-scraper (um item por perfil, com as últimas publicações dentro)
@@ -209,7 +220,8 @@ insert into public.social_collectors (workspace_id, platform, actor, input_templ
   }'
 );
 
--- YouTube · streamers/youtube-scraper (cada item é um vídeo; uma execução por canal)
+-- YouTube · streamers/youtube-scraper (cada item é um vídeo; uma execução por canal).
+-- A conta é o nome do canal depois do @, não o endereço inteiro.
 insert into public.social_collectors (workspace_id, platform, actor, batch, input_template, field_map) values (
   '<workspace_id>', 'youtube', 'streamers/youtube-scraper', false,
   '{"startUrls": [{"url": "https://www.youtube.com/@{{handle}}"}], "maxResults": 10}',
@@ -249,7 +261,7 @@ from public.social_last_runs where workspace_id = '<id>';
 - **Só contas ativas** (`is_active`) de redes com coletor ligado (`enabled`) entram.
 - **Idempotente.** Rodar duas vezes no mesmo dia atualiza a fotografia do dia e as publicações; não duplica.
 - **Tempo.** A função espera cada actor por `timeout_secs` + 10 s. O limite de uma Edge Function é de 150 s no plano gratuito e 400 s nos pagos: no gratuito, mantenha `timeout_secs` em até 120. Se as redes ficarem lentas, agende uma chamada por rede (mesmo arquivo de cron, com `body := '{"platform":"instagram"}'::jsonb` e outro nome de job).
-- **Fotografia do dia.** A coleta substitui os números do dia, inclusive os lançados à mão antes dela. O que for lançado depois da coleta vale até a coleta do dia seguinte.
+- **Fotografia do dia.** A coleta substitui, na fotografia do dia, os números que ela traz, inclusive os lançados à mão antes dela; os números que o actor não devolve ficam como estavam. O que for lançado depois da coleta vale até a coleta do dia seguinte. O dia da fotografia é o da execução, em Brasília (no GA4, o relatório vai até a véspera).
 
 ## GA4 (sites)
 
@@ -281,7 +293,7 @@ Com `input_template` vazio, a função pede `activeUsers`, `sessions` e `screenP
 
 Funcionam para qualquer rede, com ou sem coletor.
 
-**Lançar números.** Botão no topo da aba ou no cartão da conta. Escolha a conta e o dia (não pode ser futuro) e digite a audiência; os outros números são opcionais. Se o dia já tiver números, a tela avisa e os campos preenchidos substituem os anteriores.
+**Lançar números.** Botão no topo da aba ou no cartão da conta. Escolha a conta e o dia (não pode ser futuro) e preencha pelo menos um número: o primeiro campo é a audiência, os outros são seguindo, publicações, visualizações, curtidas, comentários e compartilhamentos. Se o dia já tiver números, a tela avisa; os campos preenchidos substituem os anteriores e os deixados em branco não mudam.
 
 **Importar CSV.** Botão **Importar CSV**: escolha um arquivo ou cole as linhas. A tela mostra quantos dias estão prontos e quais linhas têm problema (com o número da linha) antes de importar; linhas com problema ficam de fora.
 
@@ -305,7 +317,7 @@ Funcionam para qualquer rede, com ou sem coletor.
 - `date` é obrigatória, e pelo menos uma coluna de número.
 - Datas: `2026-01-31`, `2026/01/31` ou `31/01/2026` (dia primeiro), com ou sem hora depois. Datas futuras são recusadas.
 - Números inteiros: `12345`, `12.345`, `12,345`, `1.234,00`, `1,2 mil`, `3.4k`. Número com casas decimais que não sejam zero é recusado.
-- Com as colunas `platform` e `handle`, um arquivo alimenta várias contas de uma vez (as contas precisam existir). Sem elas, escolha a conta no diálogo.
+- Com as colunas `platform` e `handle`, um arquivo alimenta várias contas de uma vez (as contas precisam existir). Em `platform` vai o identificador da rede, em minúsculas ou não: `instagram`, `tiktok`, `youtube`, `facebook`, `linkedin`, `x`, `threads`, `pinterest`, `substack` ou `website` (para Site). Em `handle` vai a conta como foi cadastrada, com ou sem `@`. Sem essas colunas, escolha a conta no diálogo.
 - Um dia que aparece duas vezes para a mesma conta fica com a última linha. Os números do arquivo substituem os que já estavam gravados naquele dia; uma célula vazia não altera o número que já existia.
 - Limite: 2 MB por arquivo.
 
@@ -333,6 +345,14 @@ npx playwright test tests/e2e/social.spec.js            # a aba no navegador
 npm run lint && npm run format:check && npm run build
 ```
 
+Para conferir o SQL do agendamento sem deixar nada no banco (tudo dentro de uma transação desfeita no fim; a saída mostra `social-collect-daily|0 9 * * *` e termina com `ROLLBACK`):
+
+```bash
+sed -e 's|<ref-do-projeto>|exemplo|' -e 's|<mesmo-valor-de-SOCIAL_COLLECT_SECRET>|segredo-de-teste-local|' supabase/cron/social_collect_cron.sql \
+  | { echo 'begin;'; cat; echo "select jobname, schedule from cron.job where jobname = 'social-collect-daily'; rollback;"; } \
+  | psql "postgresql://postgres:postgres@127.0.0.1:55322/postgres" -v ON_ERROR_STOP=1 -tA
+```
+
 `tests/functions/social-collect.local.js` sobe a função com `supabase functions serve`, um servidor local que imita a Apify, o login do Google e a Data API do GA4, cria um workspace próprio, confere o que foi gravado (inclusive com um actor forçado a falhar e com a troca de actor por uma linha) e apaga tudo no fim. O token e o segredo usados nele são gerados na hora e não saem da máquina.
 
 Para servir a função à mão:
@@ -349,16 +369,17 @@ Arquivos `.env*` estão no `.gitignore`. Não coloque o token de produção num 
 
 ## Problemas comuns
 
-| O que aparece                                                    | Causa provável e o que fazer                                                                                                           |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Aba mostra "Redes sociais ainda não foi configurada aqui"        | A migration não foi aplicada neste banco (passo 2).                                                                                    |
-| Alerta "a última coleta automática falhou" numa rede             | Leia a mensagem no alerta ou em `social_last_runs`. Enquanto isso, os números podem ser lançados à mão pelo botão do próprio alerta.   |
-| `actor ... failed (HTTP 401)`                                    | `APIFY_TOKEN` errado ou revogado. Recrie o secret.                                                                                     |
-| `actor ... failed (HTTP 404)`                                    | Nome do actor errado em `social_collectors.actor`.                                                                                     |
-| `actor ... timed out`                                            | Aumente `timeout_secs`, reduza o que o actor busca (`resultsPerPage`, `maxResults`) ou agende a rede separadamente.                    |
-| `no numbers returned for ...`                                    | O actor rodou, mas o `field_map` não achou os números: compare com a saída real do actor. Ou a conta não existe na rede.               |
-| `APIFY_TOKEN is not set` / `GA4_SERVICE_ACCOUNT_JSON is not set` | Falta o secret (passo 1).                                                                                                              |
-| A função responde `401`                                          | O cabeçalho `x-collect-secret` não bate com o secret `SOCIAL_COLLECT_SECRET`. No cron, o valor vem do Vault (`social_collect_secret`). |
-| A função responde `500` com `SOCIAL_COLLECT_SECRET is not set`   | O secret não existe ou tem menos de 16 caracteres.                                                                                     |
-| O cron não roda                                                  | Confira `cron.job` e `cron.job_run_details` (consultas no fim de `social_collect_cron.sql`) e a resposta em `net._http_response`.      |
-| Nenhuma linha em `social_collect_runs` depois de uma execução    | Não há coletor ligado com conta ativa, ou a função foi encerrada por tempo antes de qualquer rede terminar.                            |
+| O que aparece                                                    | Causa provável e o que fazer                                                                                                                                        |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aba mostra "Redes sociais ainda não foi configurada aqui"        | A migration não foi aplicada neste banco (passo 2).                                                                                                                 |
+| Alerta "a última coleta automática falhou" numa rede             | Leia a mensagem no alerta ou em `social_last_runs`. Enquanto isso, os números podem ser lançados à mão pelo botão do próprio alerta.                                |
+| Alerta amarelo "a última coleta automática trouxe X de Y contas" | A rede rodou, mas algumas contas não voltaram (`status = partial`). A mensagem diz quais. Confira se o usuário da conta está certo e se a conta existe e é pública. |
+| `actor ... failed (HTTP 401)`                                    | `APIFY_TOKEN` errado ou revogado. Recrie o secret.                                                                                                                  |
+| `actor ... failed (HTTP 404)`                                    | Nome do actor errado em `social_collectors.actor`.                                                                                                                  |
+| `actor ... timed out`                                            | Aumente `timeout_secs`, reduza o que o actor busca (`resultsPerPage`, `maxResults`) ou agende a rede separadamente.                                                 |
+| `no numbers returned for ...`                                    | O actor rodou, mas o `field_map` não achou os números: compare com a saída real do actor. Ou a conta não existe na rede.                                            |
+| `APIFY_TOKEN is not set` / `GA4_SERVICE_ACCOUNT_JSON is not set` | Falta o secret (passo 1).                                                                                                                                           |
+| A função responde `401`                                          | O cabeçalho `x-collect-secret` não bate com o secret `SOCIAL_COLLECT_SECRET`. No cron, o valor vem do Vault (`social_collect_secret`).                              |
+| A função responde `500` com `SOCIAL_COLLECT_SECRET is not set`   | O secret não existe ou tem menos de 16 caracteres.                                                                                                                  |
+| O cron não roda                                                  | Confira `cron.job` e `cron.job_run_details` (consultas no fim de `social_collect_cron.sql`) e a resposta em `net._http_response`.                                   |
+| Nenhuma linha em `social_collect_runs` depois de uma execução    | Não há coletor ligado com conta ativa, ou a função foi encerrada por tempo antes de qualquer rede terminar.                                                         |

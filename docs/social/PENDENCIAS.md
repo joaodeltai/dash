@@ -1,6 +1,6 @@
 # Pendências
 
-Nenhuma fase esgotou os quatro ciclos e nenhum critério de pronto ficou reprovado. O que está aqui é o que **não foi feito de propósito** (depende de aprovação), o que **não pôde ser validado** neste ambiente e o que ficou **fora do escopo** e vale decidir.
+No fechamento do trabalho, nenhuma fase tinha esgotado os quatro ciclos de verificação e nenhum critério de pronto estava reprovado (a tabela, com o que cada verificador conferiu, está no relatório final da entrega; os comandos para repetir as checagens estão no README). O que está aqui é o que **não foi feito de propósito** (depende de aprovação), o que **não pôde ser validado** neste ambiente e o que ficou **fora do escopo** e vale decidir.
 
 ## Depende de aprovação (nada disto foi executado)
 
@@ -18,7 +18,7 @@ Na ordem. O passo a passo está em [README.md](README.md#colocar-em-produção).
 - **Actors reais da Apify.** Nenhum foi executado. Os `field_map` do README precisam ser conferidos com a saída real de cada actor, com uma conta de verdade, antes de confiar nos números.
 - **GA4 real.** O fluxo da conta de serviço e do relatório foi exercitado só contra um servidor local que imita o Google.
 - **A função no ambiente hospedado.** Rodou no runtime local do Supabase. Limite de tempo, variáveis de ambiente da plataforma (`SUPABASE_SECRET_KEYS`) e a chamada pelo `pg_net` só se confirmam depois do deploy.
-- **O agendamento no projeto hospedado.** O SQL do cron foi executado num banco local descartável (cria o job, guarda os valores no Vault, pode ser rodado de novo). No projeto real, falta ver a primeira execução das 06:00.
+- **O agendamento no projeto hospedado.** O SQL do cron só foi executado em banco local, pelo comando do README ("Rodar e testar localmente"), que cria o job dentro de uma transação e a desfaz. Não há teste automatizado disso na suíte. No projeto real, falta rodar o arquivo e ver a primeira execução das 06:00.
 - **A aba contra o Supabase de produção.** Sem a migration aplicada lá, só é possível ver o aviso de "ainda não configurada".
 - **Volume.** Testado com poucas contas e alguns meses de histórico. A tela carrega até 400 dias de fotografias, em páginas de 1.000 linhas.
 

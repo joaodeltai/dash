@@ -321,7 +321,7 @@ function fakeDb({ collectors, accounts, failTable }) {
       order: () => q,
       eq: (k, v) => ((filters[k] = v), q),
       upsert: (rows, opt) => {
-        calls.push({ table, op: 'upsert', opt });
+        calls.push({ table, op: 'upsert', opt, rows });
         const p =
           table === failTable ? { data: null, error: { message: `write to ${table} refused` } } : { data: rows.map((_, i) => ({ id: i })), error: null };
         if (!p.error) {
@@ -529,6 +529,24 @@ describe('collectAll', () => {
     expect(order.indexOf('recorded youtube')).toBeLessThan(order.indexOf('instagram answered'));
     expect(order[order.length - 1]).toBe('recorded instagram');
     expect(db.writes.social_collect_runs).toHaveLength(3);
+  });
+
+  it('writes only the numbers the source returned, so a number already stored that day is not erased', async () => {
+    const items = [
+      { username: 'acme', followersCount: 1800, followsCount: 120 },
+      { username: 'acme.br', followersCount: 2500 }, // no "following" for this one
+    ];
+    const db = fakeDb({ collectors: [collector('instagram', 'apify/instagram-profile-scraper', IG_MAP)], accounts: ACCOUNTS });
+    await collectAll(db, ENV, fakeFetch({ 'apify~instagram-profile-scraper': items }));
+    const sent = db.calls.filter(c => c.table === 'social_snapshots');
+    expect(sent).toHaveLength(2); // one request per set of fields
+    expect(
+      sent
+        .map(c => c.rows.map(r => Object.keys(r).sort().join(',')))
+        .flat()
+        .sort(),
+    ).toEqual(['account_id,collected_at,date,extra,followers,following,source', 'account_id,collected_at,date,extra,followers,source']);
+    for (const c of sent) expect(new Set(c.rows.map(r => Object.keys(r).sort().join(','))).size).toBe(1);
   });
 
   it('narrows the collection to a platform and skips disabled collectors and inactive accounts', async () => {

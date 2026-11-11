@@ -143,9 +143,19 @@ export async function collectPlatform(
       if (n.missing.length) problems.push(`no numbers returned for ${n.missing.map(a => a.handle).join(', ')}`);
     });
 
-    for (const part of chunk(snapshots, 200)) {
-      await must(db.from('social_snapshots').upsert(part, { onConflict: 'account_id,date' }).select('id'), 'saving snapshots');
-      run.snapshots_written += part.length;
+    // Rows written together must carry the same fields: a field missing from one row would be stored as empty and
+    // erase a number already there (typed by hand that day, for example). Only what the source returned is written.
+    const shapes = new Map<string, SnapshotRow[]>();
+    for (const row of snapshots) {
+      const shape = Object.keys(row).sort().join(',');
+      if (!shapes.has(shape)) shapes.set(shape, []);
+      shapes.get(shape)!.push(row);
+    }
+    for (const group of shapes.values()) {
+      for (const part of chunk(group, 200)) {
+        await must(db.from('social_snapshots').upsert(part, { onConflict: 'account_id,date' }).select('id'), 'saving snapshots');
+        run.snapshots_written += part.length;
+      }
     }
     run.accounts_ok = snapshots.length;
     for (const part of chunk(posts, 200)) {
