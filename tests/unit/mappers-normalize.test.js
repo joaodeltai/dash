@@ -178,7 +178,9 @@ describe('normalize', () => {
     const d = st.data;
     expect(d.tasks.map(t => t.id)).toEqual(['t-a', 't-b']);
     expect(d.comments.map(c => c.id)).toEqual(['c1']);
-    expect(d.activity.map(a => a.id)).toEqual(['a1', 'a4']);
+    // history outlives a deleted task (the entry stays, detached); entries of a deleted project go with it
+    expect(d.activity.map(a => a.id)).toEqual(['a1', 'a2', 'a4']);
+    expect(d.activity.find(a => a.id === 'a2').task).toBeNull();
     expect(d.notifs.map(n => n.id)).toEqual(['n1']);
     expect(d.events.map(e => e.id)).toEqual(['e1', 'e3']);
     expect(d.savedViews.map(v => v.id)).toEqual(['v1']);
@@ -304,5 +306,17 @@ describe('normalize', () => {
   it('returns the same object it received', () => {
     const st = makeState();
     expect(normalize(st.data)).toBe(st.data);
+  });
+
+  it('history outlives its task: the entry is detached and keeps the title it was given', () => {
+    const st = makeState();
+    st.data.tasks = [makeTask({ id: 't1', title: 'Write the brief' })];
+    st.data.activity = [{ id: 'a1', by: ids.me, verb: 'created', task: 't1', project: ids.p1, at: 1, extra: '', label: 'Write the brief' }];
+    st.data.tasks = [];
+    normalize(st.data);
+    expect(st.data.activity).toEqual([{ id: 'a1', by: ids.me, verb: 'created', task: null, project: ids.p1, at: 1, extra: '', label: 'Write the brief' }]);
+    // idempotent
+    normalize(st.data);
+    expect(st.data.activity).toHaveLength(1);
   });
 });

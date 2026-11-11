@@ -16,7 +16,7 @@ function setup(prepare) {
   const st = makeState();
   prepare?.(st);
   const fake = createFakeClient();
-  const seen = { status: [], rejected: [], auth: [], files: [] };
+  const seen = { status: [], rejected: [], auth: [], files: [], server: [] };
   const sync = createSync({
     getClient: () => fake.client,
     getContext: () => ctx,
@@ -25,6 +25,11 @@ function setup(prepare) {
     onRejected: e => seen.rejected.push(e),
     onAuthLost: e => seen.auth.push(e),
     onDeletedFiles: p => seen.files.push(p),
+    // what the app does with database-decided values: show them in place of the provisional ones
+    onServerValues: (table, rows) => {
+      seen.server.push({ table, rows });
+      for (const r of rows) Object.assign(st.data[table].find(x => x.id === r.id) || {}, { key: r.key });
+    },
   });
   const commit = () => {
     normalize(st.data);
@@ -709,5 +714,83 @@ describe('classify', () => {
     expect(classify({ message: 'duplicate key' }, 409)).toBe('rejected');
     expect(classify({ message: 'permission denied' }, 403)).toBe('rejected');
     expect(classify({ message: 'bad' }, 400)).toBe('rejected');
+  });
+});
+
+describe('columns decided by the database (task keys)', () => {
+  it('reads the key back when inserting tasks, adopts it in the baseline and reports it', async () => {
+    const { d, fake, sync, seen } = setup();
+    d.tasks.push(makeTask({ id: 't1', key: 'WEB-201' }));
+    // someone else took WEB-201 a moment earlier: the database answers with the next free key
+    fake.failWhen(
+      c => c.op === 'upsert' && c.table === 'tasks',
+      () => ({ data: [{ id: 't1', key: 'WEB-207' }], error: null, status: 201 }),
+    );
+    await sync.flush();
+    expect(fake.of('upsert', 'tasks')[0].select).toBe('id,key');
+    expect(seen.server).toEqual([{ table: 'tasks', rows: [{ id: 't1', key: 'WEB-207' }] }]);
+    expect(sync.baselineRow('tasks', 't1').key).toBe('WEB-207');
+    // the app now shows the real key, so nothing is left to send
+    expect(d.tasks[0].key).toBe('WEB-207');
+    expect(sync.pending()).toBe(0);
+    expect(fake.of('update', 'tasks')).toEqual([]);
+  });
+
+  it('keeps the provisional key when the database confirms it', async () => {
+    const { d, fake, sync, seen } = setup();
+    d.tasks.push(makeTask({ id: 't1', key: 'WEB-201' }));
+    fake.failWhen(
+      c => c.op === 'upsert' && c.table === 'tasks',
+      () => ({ data: [{ id: 't1', key: 'WEB-201' }], error: null, status: 201 }),
+    );
+    await sync.flush();
+    expect(sync.baselineRow('tasks', 't1').key).toBe('WEB-201');
+    expect(seen.server).toEqual([{ table: 'tasks', rows: [{ id: 't1', key: 'WEB-201' }] }]);
+    expect(sync.pending()).toBe(0);
+  });
+
+  it('a retried insert that the database ignores (already there) returns nothing and changes nothing', async () => {
+    const { d, fake, sync, seen } = setup();
+    d.tasks.push(makeTask({ id: 't1', key: 'WEB-201' }));
+    fake.failWhen(
+      c => c.op === 'upsert' && c.table === 'tasks',
+      () => ({ data: [], error: null, status: 201 }),
+    );
+    await sync.flush();
+    expect(seen.server).toEqual([]);
+    expect(sync.baselineRow('tasks', 't1').key).toBe('WEB-201');
+  });
+
+  it('does not read anything back from tables without database-decided columns', async () => {
+    const { d, fake, sync } = setup(st => st.data.tasks.push(makeTask({ id: 't1' })));
+    d.comments.push({ id: 'c1', task: 't1', by: ids.me, at: 1, text: 'hi', re: {} });
+    await sync.flush();
+    expect(fake.of('upsert', 'comments')[0].select).toBeUndefined();
+  });
+
+  it('reads the key back when a task moves to another project, not on ordinary edits', async () => {
+    const { d, fake, sync, seen } = setup(st => {
+      st.data.projects.push({ ...st.data.projects[0], id: ids.p2, key: 'APP', name: 'App', members: [], perms: {} });
+      st.data.tasks.push(makeTask({ id: 't1', key: 'WEB-201' }));
+    });
+    d.tasks[0].title = 'Renamed';
+    await sync.flush();
+    expect(fake.of('update', 'tasks')[0].select).toBeUndefined();
+    expect(seen.server).toEqual([]);
+
+    fake.reset();
+    d.tasks[0].project = ids.p2;
+    d.tasks[0].key = 'APP-201';
+    fake.failWhen(
+      c => c.op === 'update' && c.table === 'tasks',
+      () => ({ data: [{ id: 't1', key: 'APP-230' }], error: null, status: 200, count: 1 }),
+    );
+    await sync.flush();
+    const call = fake.of('update', 'tasks')[0];
+    expect(call.patch).toEqual({ project_id: ids.p2, key: 'APP-201' });
+    expect(call.select).toBe('id,key');
+    expect(sync.baselineRow('tasks', 't1').key).toBe('APP-230');
+    expect(d.tasks[0].key).toBe('APP-230');
+    expect(seen.server).toEqual([{ table: 'tasks', rows: [{ id: 't1', key: 'APP-230' }] }]);
   });
 });

@@ -105,22 +105,30 @@ describe.skipIf(!available)('deleting a workspace', () => {
 });
 
 describe.skipIf(!available)('deleting a task or a project cascades', () => {
-  it('deleting a task removes its subtasks, dependencies (both directions), comments, activity and notifications, and detaches its files', async () => {
+  it('deleting a task removes its subtasks, dependencies (both directions), comments and notifications, detaches its files and keeps its history', async () => {
     const { owner, ids } = await buildWorkspace();
     const c = owner.client;
     // a dependency in the other direction too
     okOf(await c.from('task_dependencies').insert({ task_id: ids.task2, depends_on_id: ids.task }));
     expect(n('notifications', `task_id = '${ids.task}'`)).toBeGreaterThan(0);
     expect(n('task_favorites', `task_id = '${ids.task}'`)).toBe(1);
+    const [{ key }] = query(`select key from public.tasks where id = '${ids.task}'`);
     const res = await c.from('tasks').delete().eq('id', ids.task).select();
     expect(res.error).toBeNull();
     expect(res.data).toHaveLength(1);
     expect(n('subtasks', `task_id = '${ids.task}'`)).toBe(0);
     expect(n('task_dependencies', `task_id = '${ids.task}' or depends_on_id = '${ids.task}'`)).toBe(0);
     expect(n('comments', `task_id = '${ids.task}'`)).toBe(0);
-    expect(n('activity', `task_id = '${ids.task}'`)).toBe(0);
     expect(n('notifications', `task_id = '${ids.task}'`)).toBe(0);
     expect(n('task_favorites', `task_id = '${ids.task}'`)).toBe(0);
+    // the history is kept: the entry is detached from the task, carries its title and stays in the project...
+    expect(query(`select task_id, project_id, subject from public.activity where id = '${ids.activity}'`)).toEqual([
+      { task_id: null, project_id: ids.project, subject: 'one' },
+    ]);
+    // ...and the deletion itself is recorded, in the name of who did it
+    expect(query(`select actor_id, subject, extra, task_id from public.activity where verb = 'deleted' and project_id = '${ids.project}'`)).toEqual([
+      { actor_id: ids.ownerMember, subject: 'one', extra: key, task_id: null },
+    ]);
     // the file stays in the project, just no longer attached
     expect(query(`select task_id, project_id from public.files where id = '${ids.file}'`)).toEqual([{ task_id: null, project_id: ids.project }]);
     // the other task and the project are untouched
@@ -128,8 +136,9 @@ describe.skipIf(!available)('deleting a task or a project cascades', () => {
     expect(n('projects', `id = '${ids.project}'`)).toBe(1);
   });
 
-  it('deleting a project removes its tasks, files, events, saved views, project members and activity', async () => {
+  it('deleting a project removes its tasks, files, events, saved views and project members, and keeps its history under the project name', async () => {
     const { owner, ids } = await buildWorkspace();
+    const [{ name, is_private }] = query(`select name, is_private from public.projects where id = '${ids.project}'`);
     const res = await owner.client.from('projects').delete().eq('id', ids.project).select();
     expect(res.error).toBeNull();
     expect(res.data).toHaveLength(1);
@@ -147,6 +156,15 @@ describe.skipIf(!available)('deleting a task or a project cascades', () => {
     }
     expect(n('subtasks', `task_id in ('${ids.task}', '${ids.task2}')`)).toBe(0);
     expect(n('comments', `task_id = '${ids.task}'`)).toBe(0);
+    // the history is kept, detached from the project and labelled with its name and privacy
+    expect(query(`select task_id, project_id, subject, project_name, restricted from public.activity where id = '${ids.activity}'`)).toEqual([
+      { task_id: null, project_id: null, subject: 'one', project_name: name, restricted: is_private },
+    ]);
+    expect(query(`select actor_id, subject, project_name from public.activity where verb = 'deleted project' and workspace_id = '${ids.ws}'`)).toEqual([
+      { actor_id: ids.ownerMember, subject: name, project_name: name },
+    ]);
+    // tasks that go with the project do not each get a "deleted" entry
+    expect(n('activity', `workspace_id = '${ids.ws}' and verb = 'deleted'`)).toBe(0);
     // the workspace and its people survive
     expect(n('workspaces', `id = '${ids.ws}'`)).toBe(1);
     expect(n('members', `workspace_id = '${ids.ws}'`)).toBe(3);
