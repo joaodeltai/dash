@@ -10,7 +10,7 @@ import { PTABS } from '../pages/project.js';
 import { tlAfter } from '../views/timeline.js';
 import { renderLayer } from '../overlays/drawer.js';
 import { placePop } from '../overlays/popovers.js';
-import { renderAuth } from '../pages/auth.js';
+import { renderAuth, renderBoot } from '../pages/auth.js';
 
 export const ROUTE_NAMES = {
   home: 'Home',
@@ -107,7 +107,7 @@ export function tryFocus(key) {
 }
 export function pageTitle() {
   const u = S.ui;
-  if (u.auth) return 'Gr8r Studio';
+  if (u.auth || u.booting || u.bootError || !D().me) return 'Gr8r Studio';
   let t = ROUTE_NAMES[u.route] || 'Not found';
   if (u.route === 'project' && proj(u.params.id)) t = `${(PTABS.find(x => x[0] === u.params.tab) || [0, 'Saved view'])[1]} · ${proj(u.params.id).name}`;
   if (u.route === 'member' && mem(u.params.id)) t = mem(u.params.id).name;
@@ -150,8 +150,8 @@ export function render() {
     /* not supported here; safe to skip */
   }
   const keep = $$('[data-keep]').map(el => [el.dataset.keep, el.scrollTop, el.scrollLeft]);
-  $('#app').innerHTML = S.ui.auth ? renderAuth() : renderShell();
-  $('#layer').innerHTML = renderLayer();
+  $('#app').innerHTML = S.ui.booting || S.ui.bootError ? renderBoot() : S.ui.auth ? renderAuth() : renderShell();
+  $('#layer').innerHTML = S.ui.booting || S.ui.bootError ? '' : renderLayer();
   makeFocusable();
   keep.forEach(([k, t, l]) => {
     const el = document.querySelector(`[data-keep="${CSS.escape(k)}"]`);

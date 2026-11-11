@@ -1,9 +1,11 @@
 /* ---------- store ---------- */
 import { TODAY, diffD, iso, parse, uid } from './utils.js';
-import { PCOLORS, TEAMS_SEED } from './constants.js';
-import { seed } from '../data/seed.js';
+import { PCOLORS } from './constants.js';
+import { emptyData } from '../data/mappers.js';
 
-export const STORE_KEY = 'gr8r.v2';
+/* Workspace data lives in Supabase (see src/data/backend.js). Only presentation preferences are cached in
+   this browser, so the theme and sidebar state apply before the workspace has loaded. */
+export const PREFS_KEY = 'dash.prefs';
 export const DEFAULT_PREFS = {
   theme: 'system',
   accent: 'indigo',
@@ -12,42 +14,43 @@ export const DEFAULT_PREFS = {
   weekStart: 1,
   dateFmt: 'MMM d',
   lang: 'English (US)',
-  tz: '(GMT-07:00) Pacific Time',
+  tz: '',
   motion: 'system',
   home: 'home',
   openTasks: 'drawer',
-  name: 'Tanjim Islam',
-  title: 'Head of Product',
+  name: '',
+  title: '',
 };
-export function load() {
+const LOCAL_PREFS = ['theme', 'accent', 'side', 'density', 'motion', 'dateFmt', 'weekStart'];
+export function loadCached() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const j = JSON.parse(raw);
-      if (j && j.data && j.data.tasks) return j;
-    }
+    const j = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+    if (j && typeof j === 'object') return j;
   } catch {
-    /* storage blocked or corrupt: start from seed data */
+    /* storage blocked or corrupt: use defaults */
   }
   return null;
 }
-export const saved = load();
+export const saved = loadCached();
 export const S = {
-  data: saved?.data || seed(),
+  data: emptyData(),
   prefs: Object.assign({}, DEFAULT_PREFS, saved?.prefs || {}),
-  views: saved?.views || {},
+  views: {},
   ui: {
     fx: {},
+    booting: true,
+    bootError: null,
+    sync: 'idle',
     auth: null,
     authStep: 'login',
     onb: 0,
-    onbData: { use: 'product', team: 'kanban', size: '2-10', ws: '', proj: 'Website Launch', tmpl: 'web', invites: '' },
+    onbData: { use: 'product', team: 'kanban', size: 'Just me', ws: '', proj: 'My first project', tmpl: 'web', invites: '' },
     route: 'home',
     params: {},
     history: [],
     collapsed: !!saved?.collapsed,
     mnav: false,
-    expanded: { p1: true },
+    expanded: {},
     drawer: null,
     drawerFull: false,
     drawerTab: 'comments',
@@ -82,16 +85,24 @@ export const S = {
     drafts: {},
   },
 };
-export let _saveT;
+/* Remembers presentation preferences in this browser. */
+export function cachePrefs() {
+  try {
+    const prefs = Object.fromEntries(LOCAL_PREFS.filter(k => S.prefs[k] != null).map(k => [k, S.prefs[k]]));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ prefs, collapsed: S.ui.collapsed }));
+  } catch {
+    /* storage full or blocked: preferences just won't be remembered on this device */
+  }
+}
+/* The backend registers the function that persists the workspace (the sync engine's scheduler). */
+let persist = () => {};
+export function setPersist(fn) {
+  persist = fn;
+}
+/* Called after every mutation: schedules a sync of whatever changed in S.data / S.prefs / S.views. */
 export function save() {
-  clearTimeout(_saveT);
-  _saveT = setTimeout(() => {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ data: S.data, prefs: S.prefs, views: S.views, collapsed: S.ui.collapsed }));
-    } catch {
-      /* storage full or blocked: keep working in memory */
-    }
-  }, 150);
+  cachePrefs();
+  persist();
 }
 
 /* ---------- lookups ---------- */
@@ -128,11 +139,11 @@ export function logAct(verb, t, extra = '') {
   if (t) t.updated = Date.now();
 }
 
-/* ---------- teams (workspace data, seeded on first use) ---------- */
+/* ---------- teams ---------- */
 export const NO_TEAM = { id: '', name: 'No team', icon: 'users', c: '#8A867E', desc: '' };
 export function teamsList() {
   const d = D();
-  if (!d.teams) d.teams = TEAMS_SEED.map(t => ({ ...t }));
+  if (!d.teams) d.teams = [];
   return d.teams;
 }
 export function team(id) {
