@@ -150,7 +150,7 @@ Regras do `members_guard` (não se aplicam a chamadas sem usuário, como o SQL d
 
 - **Insert**: só convite pendente (`user_id` nulo, `status = 'invited'`, papel diferente de `owner`). Convidar `admin` exige ser admin. `invited_by` é preenchido com o usuário atual.
 - **Update**: `workspace_id` e `user_id` não mudam. E-mail só muda em convite pendente e por admin. Papel e status só mudam por admin, nunca de ou para `owner`, e um membro sem conta não pode ser ativado. Mudar `team_id` exige `can_write`. `last_seen_at` e `invited_by` não mudam por aqui.
-- **Delete**: o `owner` não pode ser removido.
+- **Delete**: o `owner` não pode ser removido; a linha dele só sai junto com o workspace, quando o próprio dono exclui o workspace.
 - **Dados de exibição**: `name`, `title`, `color` e `timezone` de um membro só mudam pelo próprio membro ou por admin. Os demais com `can_write` só mexem na alocação de time.
 
 Regras do `projects_guard` (update de `projects`):
@@ -182,7 +182,7 @@ Autoria (`*_stamp`): o cliente não escolhe `created_by` (projetos, tarefas, eve
 Como o nível é calculado, nesta ordem (a primeira regra que bater vence):
 
 1. **0** se o usuário não é membro ativo do workspace do projeto.
-2. **0** se não for `owner`, não for o criador (`created_by`) com papel diferente de `guest`, não tiver linha em `project_members` e (o projeto for privado **ou** o papel for `guest`).
+2. **0** se não for `owner`, não for o líder (`lead_id`), não for o criador (`created_by`) com papel diferente de `guest`, não tiver linha em `project_members` e (o projeto for privado **ou** o papel for `guest`).
 3. **4** se for `owner` ou `admin`, líder (`lead_id`) ou criador com papel diferente de `guest`.
 4. Pela coluna `permission` da linha em `project_members`: `Full access` = 4, `Can edit` = 3, `Can comment` = 2, `Can view` = 1.
 5. Sem permissão explícita (linha com `permission` nulo, ou membro de projeto aberto sem linha): **2** para `guest`, **3** para os demais.
@@ -196,7 +196,7 @@ Consequências práticas:
 | Projeto privado/aberto, linha sem `permission` | 4     | 4     | 3          | 2          |
 | Linha com `permission` explícita               | 4     | 4     | a da linha | a da linha |
 
-Atenção: o `owner` enxerga e administra **todos** os projetos, inclusive os privados, para que nenhum projeto fique órfão. O `admin` **não** enxerga projetos privados dos quais não participa. Um criador que for rebaixado a `guest` perde o atalho de criador, tanto para ler quanto para escrever.
+Atenção: o `owner` enxerga e administra **todos** os projetos, inclusive os privados, para que nenhum projeto fique órfão. O `admin` **não** enxerga projetos privados dos quais não participa. Um criador que for rebaixado a `guest` perde o atalho de criador, tanto para ler quanto para escrever. O líder do projeto sempre o enxerga, mesmo sem linha em `project_members`. Menções em comentários casam o nome inteiro (`@Ana Lima` não notifica uma pessoa chamada `Ana Li`).
 
 Quem concede permissões em `project_members`:
 
