@@ -46,6 +46,47 @@ const snapshots = handle =>
   query(`select s.date::text as date, s.followers, s.views, s.source from public.social_snapshots s join public.social_accounts a on a.id = s.account_id
          where a.workspace_id = ${lit(ids.ws)} and a.handle = ${lit(handle)} order by s.date`);
 const dialog = page => page.locator('.soc-dialog .modal');
+
+/* Elements that stick out past the right edge of the screen. An element clipped by an ancestor (ellipsis, a scrolling
+   list) does not count: what matters is what a person could scroll to or see cut off. */
+const spilled = page =>
+  page.evaluate(() => {
+    const edge = innerWidth + 0.5;
+    const clipped = el => {
+      for (let p = el.parentElement; p && !p.classList.contains('content') && p !== document.body; p = p.parentElement) {
+        const o = getComputedStyle(p).overflowX;
+        if (o !== 'visible' && p.getBoundingClientRect().right <= edge) return true;
+      }
+      return false;
+    };
+    const content = document.querySelector('.content');
+    return {
+      doc: document.documentElement.scrollWidth,
+      win: innerWidth,
+      content: content?.scrollWidth ?? 0,
+      contentWidth: content?.clientWidth ?? 0,
+      wide: [...document.querySelectorAll('.content *, .soc-dialog *, #layer .modal *')]
+        .filter(el => {
+          const cs = getComputedStyle(el);
+          if (cs.position === 'fixed' || clipped(el)) return false;
+          // the box itself is past the edge, or its content does not fit in it and is left to run out (a few pixels are
+          // allowed: the marker on the last point of the chart is centred on the edge of the plot)
+          return (
+            el.getBoundingClientRect().right > edge ||
+            (cs.overflowX === 'visible' && cs.display !== 'inline' && el.scrollWidth > el.clientWidth + 6 && !el.closest('svg'))
+          );
+        })
+        .map(el => `${el.tagName.toLowerCase()}.${String(el.className).split(' ')[0]}`)
+        .slice(0, 8),
+    };
+  });
+const expectNoSpill = async (page, what) => {
+  await page.mouse.move(0, 0); // a hover tip is drawn outside its control on purpose: measure without one
+  const m = await spilled(page);
+  expect(m.wide, `${what}: elements past the right edge`).toEqual([]);
+  expect(m.doc, `${what}: page width`).toBeLessThanOrEqual(m.win);
+  expect(m.content, `${what}: content width`).toBeLessThanOrEqual(m.contentWidth);
+};
 const openSocial = async page => {
   await openWorkspace(page, owner);
   await goto(page, 'social');
@@ -261,20 +302,6 @@ test.describe('dashboard', () => {
     await page.screenshot({ path: `${process.env.E2E_SHOTS}/${name}.png`, fullPage: true });
     await style.evaluate(el => el.remove());
   };
-  const noSideScroll = async (page, what) => {
-    const m = await page.evaluate(() => ({
-      doc: document.documentElement.scrollWidth,
-      content: document.querySelector('.content')?.scrollWidth ?? 0,
-      win: innerWidth,
-      wide: [...document.querySelectorAll('.content *, .soc-dialog *')]
-        .filter(el => el.getBoundingClientRect().right > innerWidth + 0.5 && !el.closest('.soc-table-wrap'))
-        .map(el => el.className || el.tagName)
-        .slice(0, 5),
-    }));
-    expect(m.doc, `${what}: page width`).toBeLessThanOrEqual(m.win);
-    expect(m.content, `${what}: content width`).toBeLessThanOrEqual(m.win);
-    expect(m.wide, `${what}: elements past the right edge`).toEqual([]);
-  };
 
   test.beforeAll(async ({ browser }) => {
     skipUnlessReady();
@@ -324,6 +351,7 @@ test.describe('dashboard', () => {
     await alert.locator('[data-a="socialNumbers"]').click();
     await expect(dialog(page).locator('#soc-n-account')).toHaveValue(X);
     await page.keyboard.press('Escape');
+    await expect(alert.locator('[data-a="socialNumbers"]')).toBeFocused(); // focus goes back to the button that opened the dialog
 
     // once a collection of that network works again the alert goes away
     psql(
@@ -440,6 +468,7 @@ test.describe('dashboard', () => {
     await pickOption(page, page.locator('.soc-filters button.select-btn[aria-label="Brand"]'), 'Beta');
     await expect(page.locator('.soc-card')).toHaveCount(1);
     await expect(panel).toContainText('No numbers in this period.');
+    await expect(page.locator('.soc-alert')).toHaveCount(0); // Instagram is not on screen: its alert is not either
     await expect(page.locator('.soc-brow')).toHaveCount(3); // the brand totals always list every brand
     await page.locator('[data-a="socialClearFilters"]').click();
     await expect(page.locator('.soc-card')).toHaveCount(3);
@@ -482,7 +511,7 @@ test.describe('dashboard', () => {
       await page.evaluate(() => window.__gr8r.go('social'));
       await expect(page.locator('.soc-cards')).toBeVisible();
       await expect(page.locator('.soc-alert')).toHaveCount(1);
-      await noSideScroll(page, `${scheme} page`);
+      await expectNoSpill(page, `${scheme} page`);
       await shot(page, `${scheme}-375`);
       // the theme tokens are in force: the page background is the theme's surface
       const bg = await page.evaluate(() => getComputedStyle(document.querySelector('.soc-card')).backgroundColor);
@@ -499,19 +528,19 @@ test.describe('dashboard', () => {
           await dialog(page).locator('#soc-c-text').fill('date,followers\n2026-01-31,many\nnot-a-date,5');
           await expect(dialog(page).locator('.soc-problems')).toBeVisible();
         }
-        await noSideScroll(page, `${scheme} ${name} dialog`);
+        await expectNoSpill(page, `${scheme} ${name} dialog`);
         await shot(page, `${scheme}-375-${name}`);
         await dialog(page).locator('[data-a="socialClose"]').first().click();
         await expect(dialog(page)).toHaveCount(0);
       }
       await page.locator(`.soc-card[data-account="${X}"] [data-a="socialGoal"]`).click();
-      await noSideScroll(page, `${scheme} goal dialog`);
+      await expectNoSpill(page, `${scheme} goal dialog`);
       await shot(page, `${scheme}-375-goal`);
       await dialog(page).locator('[data-a="socialClose"]').first().click();
 
       // the chart as a table also stays inside the screen
       await page.locator('[data-a="socialToggleTable"]').click();
-      await noSideScroll(page, `${scheme} table`);
+      await expectNoSpill(page, `${scheme} table`);
       await page.locator('[data-a="socialToggleTable"]').click();
       // touch: tapping the chart shows that day
       const plot = page.locator('.soc-plot');
@@ -519,7 +548,7 @@ test.describe('dashboard', () => {
       const box = await plot.boundingBox();
       await page.touchscreen.tap(box.x + box.width - 3, box.y + box.height / 2);
       await expect(plot.locator('.soc-tip b')).toHaveText('2,450');
-      await noSideScroll(page, `${scheme} chart with the day box`);
+      await expectNoSpill(page, `${scheme} chart with the day box`);
       await context.close();
     }
   });
@@ -556,5 +585,114 @@ test.describe('dashboard', () => {
     );
     expect(english).toEqual([]);
     await context.close();
+  });
+});
+
+/* ---------- the longest names the forms accept, many accounts, big numbers ---------- */
+test.describe('long names and many accounts', () => {
+  let boss;
+  let ws;
+  const LONG = { brand: 'B'.repeat(80), name: 'N'.repeat(120), handle: 'h'.repeat(200) };
+
+  test.beforeAll(async ({ browser }) => {
+    skipUnlessReady();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    boss = await createUser({ name: 'Long Owner', tag: 'sociallong' });
+    await openAs(page, boss);
+    await onboard(page, { workspace: uniqueName('Long Space'), project: 'Long project' });
+    ws = (await workspaceIds(boss)).ws;
+    await context.close();
+    const d = n => dayInSaoPaulo(n);
+    psql(`insert into public.social_accounts (workspace_id, brand, platform, handle, display_name) values
+      (${lit(ws)}, ${lit(LONG.brand)}, 'instagram', ${lit(LONG.handle)}, ${lit(LONG.name)}),
+      (${lit(ws)}, ${lit(LONG.brand)}, 'tiktok', ${lit(LONG.handle)}, '')`);
+    psql(`insert into public.social_accounts (workspace_id, brand, platform, handle)
+      select ${lit(ws)}, 'Second brand', p, 'account' from unnest(array['youtube','facebook','linkedin','twitter','threads','pinterest','substack','website','mastodon','bluesky']) p`);
+    psql(`insert into public.social_snapshots (account_id, date, followers, views, source)
+      select a.id, x.dt::date, (2345678901 + x.n * 1000)::bigint, 987654321, 'apify'
+      from public.social_accounts a cross join (values (${lit(d(-40))}, 0), (${lit(d(-8))}, 1), (${lit(d(0))}, 2)) as x(dt, n) where a.workspace_id = ${lit(ws)} and a.platform <> 'bluesky'`);
+    psql(`insert into public.social_posts (account_id, external_id, url, caption, post_type, posted_at, likes, comments, shares, views)
+      select a.id, 'long', 'https://example.invalid/' || repeat('p', 300), repeat('c', 400), repeat('t', 40), now(), 2345678901, 2345678901, 2345678901, 2345678901
+      from public.social_accounts a where a.workspace_id = ${lit(ws)} and a.platform in ('instagram', 'tiktok')`);
+    psql(`insert into public.social_collect_runs (workspace_id, platform, status, message, accounts_total, accounts_ok) values
+      (${lit(ws)}, 'instagram', 'error', ${lit('m'.repeat(600))}, 1, 0), (${lit(ws)}, 'tiktok', 'partial', ${lit('no numbers returned for ' + LONG.handle)}, 2, 1)`);
+    psql(`insert into public.social_goals (account_id, target_value, target_date)
+      select id, 2350000000, ${lit(d(10))} from public.social_accounts where workspace_id = ${lit(ws)} and platform = 'instagram'`);
+  });
+
+  for (const width of [375, 1280]) {
+    test(`nothing spills sideways at ${width}px`, async ({ browser }) => {
+      const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width, height: 800 } });
+      const page = await context.newPage();
+      await openAs(page, boss);
+      await expect(page.locator('.shell')).toBeVisible();
+      await page.evaluate(() => window.__gr8r.go('social'));
+      await expect(page.locator('.soc-card')).toHaveCount(12);
+      await expect(page.locator('.soc-alert')).toHaveCount(2);
+      await expectNoSpill(page, 'page');
+      if (process.env.E2E_SHOTS) {
+        const style = await page.addStyleTag({ content: 'html,body,#app,.shell,.main,.content{height:auto!important;overflow:visible!important}' });
+        await page.screenshot({ path: `${process.env.E2E_SHOTS}/long-${width}.png`, fullPage: true });
+        await style.evaluate(el => el.remove());
+      }
+      // the filters carry the long brand; the chart's account list and the dialogs carry the long names
+      // bring the filters to the middle of the screen first: an open menu closes when the page scrolls
+      await page.locator('.soc-filters').evaluate(el => el.scrollIntoView({ block: 'center' }));
+      await pickOption(page, page.locator('.soc-filters button.select-btn[aria-label="Brand"]'), LONG.brand.slice(0, 20));
+      await expect(page.locator('.soc-card')).toHaveCount(2);
+      await expectNoSpill(page, 'filtered by the long brand');
+      await page.locator('[data-a="socialToggleTable"]').click();
+      await expectNoSpill(page, 'table');
+      await page.locator('[data-a="socialToggleTable"]').click();
+      for (const action of ['socialNumbers', 'socialCsv']) {
+        await page.locator('.content').evaluate(el => el.scrollTo(0, 0));
+        await page.locator(`.ph [data-a="${action}"]`).click();
+        await expect(page.locator('.soc-dialog .modal')).toBeVisible();
+        if (action === 'socialCsv') {
+          // lines with problems, so the list of problems is on screen too
+          await pickOption(page, page.locator('.soc-dialog button[data-for="soc-c-account"]'), 'TikTok');
+          await page.locator('#soc-c-text').fill(`date,followers\n2026-01-31,${'x'.repeat(120)}\n${'y'.repeat(120)},5\n2026-01-30,7`);
+          await expect(page.locator('.soc-dialog .soc-problems li')).toHaveCount(2);
+        }
+        await expectNoSpill(page, `${action} dialog`);
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.soc-dialog')).toHaveCount(0);
+      }
+      await page.locator('.soc-card [data-a="socialGoal"]').first().click();
+      await expectNoSpill(page, 'goal dialog');
+      await page.keyboard.press('Escape');
+      await page.locator('.soc-card [data-a="socialRemove"]').first().click();
+      await expect(page.locator('.modal')).toBeVisible();
+      await expectNoSpill(page, 'remove confirmation');
+      await context.close();
+    });
+  }
+
+  test('a goal that is almost reached does not read as reached', async ({ page }) => {
+    await openWorkspace(page, boss);
+    await goto(page, 'social');
+    const goal = page.locator('.soc-goals .soc-grow');
+    await expect(goal).toContainText('99%'); // 2,345,680,901 of 2,350,000,000
+    await expect(goal).not.toContainText('100%');
+    await expect(goal).toContainText('to go');
+  });
+
+  test('every network offered by the form can be saved', async ({ page }) => {
+    await openWorkspace(page, boss);
+    await goto(page, 'social');
+    await page.locator('.ph [data-a="socialAdd"]').click();
+    const options = await page.locator('#soc-platform option').evaluateAll(els => els.map(o => o.value));
+    await page.keyboard.press('Escape');
+    expect(options.length).toBeGreaterThanOrEqual(10);
+    for (const id of options) expect(id, `network id "${id}" must be accepted by the database`).toMatch(/^[a-z][a-z0-9_]{1,31}$/);
+    // X, by name, through the form
+    await page.locator('.ph [data-a="socialAdd"]').click();
+    await page.locator('#soc-brand').fill('Third brand');
+    await pickOption(page, page.locator('.soc-dialog button[data-for="soc-platform"]'), /^X$/);
+    await page.locator('#soc-handle').fill('thirdbrand');
+    await page.locator('.soc-dialog [data-a="socialSaveAccount"]').click();
+    await expect(page.locator('.soc-dialog')).toHaveCount(0);
+    await expectDb(`select platform from public.social_accounts where workspace_id = ${lit(ws)} and handle = 'thirdbrand'`, 'twitter');
   });
 });

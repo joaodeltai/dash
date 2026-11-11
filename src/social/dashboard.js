@@ -5,7 +5,9 @@ import { ago, esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { shortDay, tr, trn } from '../core/i18n.js';
 import { progBar } from '../ui/helpers.js';
-import { SOC, accountById, brandNames, filteredAccounts, goalOf, growthOf, platformIds } from './data.js';
+import { S } from '../core/store.js';
+import { render } from '../shell/render.js';
+import { SOC, accountById, brandNames, filteredAccounts, goalOf, growthOf, platformIds, postsOnScreen } from './data.js';
 import { audienceLabel, platformName, platformOf, profileUrl } from './platforms.js';
 import { addDays, buildSeries, chartGeometry, fmtCompact, fmtDelta, fmtNum, fmtPct, goalProgress, todayIn, trend } from './logic.js';
 
@@ -32,7 +34,8 @@ const sourceName = s => (s === 'manual' ? tr('typed by hand') : s === 'csv' ? tr
 
 /* ---------- alerts: the last automatic collection of a network failed ---------- */
 export function alerts() {
-  const live = new Set(platformIds());
+  // only the networks that are on screen: with a brand or network filter, the others are not this view's business
+  const live = new Set(filteredAccounts().map(a => a.platform));
   return SOC.runs
     .filter(r => live.has(r.platform) && (r.status === 'error' || r.status === 'partial'))
     .map(r => {
@@ -238,8 +241,7 @@ export function goalsPanel(accounts) {
 
 /* ---------- best posts ---------- */
 export function topPosts(accounts) {
-  const ids = new Set(accounts.map(a => a.id));
-  const posts = SOC.posts.filter(p => ids.has(p.account_id)).slice(0, 8);
+  const posts = postsOnScreen(accounts, () => S.ui.route === 'social' && render()).slice(0, 8);
   const metric = (icon, n, label) =>
     n === null || n === undefined
       ? ''
@@ -251,7 +253,7 @@ export function topPosts(accounts) {
       const text = (p.caption || '').trim();
       return `<li class="soc-post"><span class="soc-rank num" aria-hidden="true">${i + 1}</span>${mark(a.platform)}
         <div class="soc-post-t"><span class="soc-cap">${text ? esc(text.slice(0, 220)) : `<span class="faint">${tr('No caption')}</span>`}</span>
-          <span class="faint soc-post-m">${esc(a.display_name || a.handle)}${p.posted_at ? ' · ' + dateText(p.posted_at) : ''}${p.post_type ? ' · ' + esc(p.post_type) : ''}</span>
+          <span class="faint trunc soc-post-m">${esc(a.display_name || a.handle)}${p.posted_at ? ' · ' + dateText(p.posted_at) : ''}${p.post_type ? ' · ' + esc(p.post_type) : ''}</span>
           <span class="soc-post-n">${metric('heart', p.likes, tr('Likes'))}${metric('message-circle', p.comments, tr('Comments'))}${metric('repeat-2', p.shares, tr('Shares'))}${metric('eye', p.views, tr('Views|social'))}</span></div>
         <div class="soc-post-e"><b class="num">${fmtCompact(Number(p.engagement))}</b><span class="faint">${tr('interactions')}</span></div>
         ${url ? `<a class="ibtn ibtn-sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-tip="${tr('Open post')}" aria-label="${tr('Open post')}">${ic('external-link', 14)}</a>` : '<span class="soc-nolink"></span>'}</li>`;

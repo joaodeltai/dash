@@ -152,6 +152,8 @@ export const CSV_COLUMNS = {
   comments: ['comments', 'comentarios'],
   shares: ['shares', 'compartilhamentos'],
 };
+/* Other names a network may be given in the "platform" column of a file. */
+export const PLATFORM_ALIASES = { x: 'twitter', site: 'website', web: 'website' };
 const cleanHandle = h =>
   String(h ?? '')
     .trim()
@@ -199,7 +201,8 @@ export function csvToSnapshots(parsed, { accounts = [], defaultAccountId = '', t
     if (date > today) return out.errors.push({ line, code: 'future-date', value: get('date') });
     let accountId = defaultAccountId;
     if (routed) {
-      accountId = index.get(`${plain(get('platform')).replace(/ /g, '_')}|${cleanHandle(get('handle'))}`) || '';
+      const network = plain(get('platform')).replace(/ /g, '_');
+      accountId = index.get(`${PLATFORM_ALIASES[network] || network}|${cleanHandle(get('handle'))}`) || '';
       if (!accountId) return out.errors.push({ line, code: 'unknown-account', value: `${get('platform')} ${get('handle')}`.trim() });
     }
     const row = { account_id: accountId, date };
@@ -286,8 +289,9 @@ export function chartGeometry(series) {
 export function goalProgress(goal, current, today = todayIn()) {
   const target = Number(goal.target_value);
   const now = isNum(current) ? current : 0;
-  const pct = target > 0 ? Math.max(0, Math.min(100, Math.round((now / target) * 100))) : 0;
   const remaining = Math.max(0, target - now);
+  // rounded down, and 100 only when the goal is really reached: 99.8% must not read as done
+  const pct = target <= 0 ? 0 : remaining === 0 ? 100 : Math.max(0, Math.min(99, Math.floor((now / target) * 100)));
   const daysLeft = goal.target_date ? daysBetween(goal.target_date, today) : null;
   return {
     pct,

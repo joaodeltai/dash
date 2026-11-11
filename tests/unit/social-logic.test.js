@@ -318,3 +318,35 @@ describe('goals and brands', () => {
     expect(canonicalBrand(null, [])).toBe('');
   });
 });
+
+describe('review fixes', () => {
+  it('a goal that is almost reached does not read as reached', async () => {
+    // the percentage is rounded down and reads 100 only when nothing is left
+    expect(goalProgress({ target_value: 2350000, target_date: null }, 2345678)).toMatchObject({ pct: 99, remaining: 4322, done: false });
+    expect(goalProgress({ target_value: 1000, target_date: null }, 999)).toMatchObject({ pct: 99, done: false });
+    expect(goalProgress({ target_value: 1000, target_date: null }, 1000)).toMatchObject({ pct: 100, done: true });
+    expect(goalProgress({ target_value: 1000, target_date: null }, 1200)).toMatchObject({ pct: 100, done: true });
+    expect(goalProgress({ target_value: 1000, target_date: null }, 5)).toMatchObject({ pct: 0, done: false });
+  });
+
+  it('every network the screen offers has an id the database accepts', async () => {
+    const { PLATFORMS } = await import('../../src/social/platforms.js');
+    const { PLATFORM_ALIASES } = await import('../../src/social/logic.js');
+    // the check constraint of social_accounts.platform and social_collectors.platform
+    for (const p of PLATFORMS) expect(p.id, p.name).toMatch(/^[a-z][a-z0-9_]{1,31}$/);
+    expect(new Set(PLATFORMS.map(p => p.id)).size).toBe(PLATFORMS.length);
+    for (const id of Object.values(PLATFORM_ALIASES)) expect(PLATFORMS.map(p => p.id)).toContain(id);
+  });
+
+  it('a network may be written by another of its names in a file', () => {
+    const named = csvToSnapshots(parseCsv('date,platform,handle,followers\n2026-11-01,X,acme,5\n2026-11-01,Site,123,9\n'), {
+      accounts: [
+        { id: 'tw', platform: 'twitter', handle: 'acme' },
+        { id: 'web', platform: 'website', handle: '123' },
+      ],
+      today: '2026-11-11',
+    });
+    expect(named.rows.map(x => x.account_id)).toEqual(['tw', 'web']);
+    expect(named.errors).toEqual([]);
+  });
+});

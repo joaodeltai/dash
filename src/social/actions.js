@@ -36,10 +36,10 @@ export function closeDialog() {
   render();
   // the page was drawn again: find the control that opened the dialog by what it does
   const a = opener?.dataset?.a;
-  if (a)
-    (
-      document.querySelector(`[data-a="${CSS.escape(a)}"]${opener.dataset.id ? `[data-id="${CSS.escape(opener.dataset.id)}"]` : ''}`) || $('.ph [data-a]')
-    )?.focus();
+  if (!a) return;
+  const only = k => (opener.dataset[k] ? `[data-${k}="${CSS.escape(opener.dataset[k])}"]` : '');
+  const same = `[data-a="${CSS.escape(a)}"]`;
+  (document.querySelector(same + only('id') + only('platform')) || document.querySelector(same) || $('.ph [data-a]'))?.focus();
 }
 A.socialClose = () => closeDialog();
 A.socialCloseBg = (el, e) => {

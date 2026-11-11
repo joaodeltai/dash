@@ -142,17 +142,17 @@ Sem linha em `social_collectors`, uma rede não é coletada (continua funcionand
 
 Uma linha de `social_collectors` diz como coletar **uma rede** de **um workspace**:
 
-| Coluna           | Para quê                                                                                                                                              |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspace_id`   | O workspace (`select id, name from public.workspaces`).                                                                                               |
-| `platform`       | A rede, igual ao `platform` das contas: `instagram`, `tiktok`, `youtube`, `facebook`, `linkedin`, `x`, `threads`, `pinterest`, `substack`, `website`. |
-| `provider`       | `apify` (padrão) ou `ga4`.                                                                                                                            |
-| `actor`          | O actor da Apify, no formato `usuario/nome`.                                                                                                          |
-| `input_template` | A entrada enviada ao actor, com marcadores (abaixo).                                                                                                  |
-| `field_map`      | Onde está cada número na resposta do actor (abaixo).                                                                                                  |
-| `batch`          | `true` (padrão): uma execução com todas as contas da rede. `false`: uma execução por conta.                                                           |
-| `timeout_secs`   | Quanto esperar pelo actor, de 10 a 300 (padrão 120).                                                                                                  |
-| `enabled`        | `false` pausa a coleta da rede.                                                                                                                       |
+| Coluna           | Para quê                                                                                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspace_id`   | O workspace (`select id, name from public.workspaces`).                                                                                                         |
+| `platform`       | A rede, igual ao `platform` das contas: `instagram`, `tiktok`, `youtube`, `facebook`, `linkedin`, `twitter` (X), `threads`, `pinterest`, `substack`, `website`. |
+| `provider`       | `apify` (padrão) ou `ga4`.                                                                                                                                      |
+| `actor`          | O actor da Apify, no formato `usuario/nome`.                                                                                                                    |
+| `input_template` | A entrada enviada ao actor, com marcadores (abaixo).                                                                                                            |
+| `field_map`      | Onde está cada número na resposta do actor (abaixo).                                                                                                            |
+| `batch`          | `true` (padrão): uma execução com todas as contas da rede. `false`: uma execução por conta.                                                                     |
+| `timeout_secs`   | Quanto esperar pelo actor, de 10 a 300 (padrão 120).                                                                                                            |
+| `enabled`        | `false` pausa a coleta da rede.                                                                                                                                 |
 
 **Trocar o actor de uma rede é mudar essa linha.** Não há nome de actor, de rede ou de campo no código da função:
 
@@ -317,7 +317,7 @@ Funcionam para qualquer rede, com ou sem coletor.
 - `date` é obrigatória, e pelo menos uma coluna de número.
 - Datas: `2026-01-31`, `2026/01/31` ou `31/01/2026` (dia primeiro), com ou sem hora depois. Datas futuras são recusadas.
 - Números inteiros: `12345`, `12.345`, `12,345`, `1.234,00`, `1,2 mil`, `3.4k`. Número com casas decimais que não sejam zero é recusado.
-- Com as colunas `platform` e `handle`, um arquivo alimenta várias contas de uma vez (as contas precisam existir). Em `platform` vai o identificador da rede, em minúsculas ou não: `instagram`, `tiktok`, `youtube`, `facebook`, `linkedin`, `x`, `threads`, `pinterest`, `substack` ou `website` (para Site). Em `handle` vai a conta como foi cadastrada, com ou sem `@`. Sem essas colunas, escolha a conta no diálogo.
+- Com as colunas `platform` e `handle`, um arquivo alimenta várias contas de uma vez (as contas precisam existir). Em `platform` vai o identificador da rede, em minúsculas ou não: `instagram`, `tiktok`, `youtube`, `facebook`, `linkedin`, `twitter` (ou `x`), `threads`, `pinterest`, `substack` ou `website` (ou `site`). O identificador tem pelo menos duas letras, por isso o X continua como `twitter`. Em `handle` vai a conta como foi cadastrada, com ou sem `@`. Sem essas colunas, escolha a conta no diálogo.
 - Um dia que aparece duas vezes para a mesma conta fica com a última linha. Os números do arquivo substituem os que já estavam gravados naquele dia; uma célula vazia não altera o número que já existia.
 - Limite: 2 MB por arquivo.
 

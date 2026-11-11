@@ -10,7 +10,8 @@ export const PLATFORMS = [
   { id: 'youtube', name: 'YouTube', mark: 'YT', audience: 'subscribers', profile: h => `https://www.youtube.com/@${h}` },
   { id: 'facebook', name: 'Facebook', mark: 'FB', audience: 'followers', profile: h => `https://www.facebook.com/${h}` },
   { id: 'linkedin', name: 'LinkedIn', mark: 'IN', audience: 'followers', profile: h => `https://www.linkedin.com/company/${h}/` },
-  { id: 'x', name: 'X', mark: 'X', audience: 'followers', profile: h => `https://x.com/${h}` },
+  // the database wants network ids of two characters or more, so X keeps the id it had as Twitter
+  { id: 'twitter', name: 'X', mark: 'X', audience: 'followers', profile: h => `https://x.com/${h}` },
   { id: 'threads', name: 'Threads', mark: 'TH', audience: 'followers', profile: h => `https://www.threads.net/@${h}` },
   { id: 'pinterest', name: 'Pinterest', mark: 'PI', audience: 'followers', profile: h => `https://www.pinterest.com/${h}/` },
   { id: 'substack', name: 'Substack', mark: 'SB', audience: 'subscribers', profile: h => `https://${h}.substack.com` },

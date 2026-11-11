@@ -18,6 +18,7 @@ export const SOC = {
   brands: [],
   snapshots: [],
   posts: [],
+  postsFor: null, // { key, rows }: best posts of the accounts on screen, read when a filter narrows them
   goals: [],
   runs: [],
   filters: { brand: '', platform: '', account: '', period: '90' },
@@ -90,19 +91,12 @@ export function loadSocial({ silent = false } = {}) {
             .order('date')
             .order('account_id'),
         ),
-        one(
-          sb
-            .from('social_posts')
-            .select('id, account_id, external_id, url, caption, post_type, posted_at, likes, comments, shares, views, engagement')
-            .eq('workspace_id', ws)
-            .order('engagement', { ascending: false })
-            .limit(200),
-        ),
+        one(sb.from('social_posts').select(POST_COLUMNS).eq('workspace_id', ws).order('engagement', { ascending: false }).limit(200)),
         one(sb.from('social_goals').select('id, account_id, metric, target_value, target_date').eq('workspace_id', ws)),
         one(sb.from('social_last_runs').select('platform, status, message, accounts_total, accounts_ok, finished_at').eq('workspace_id', ws)),
       ]);
       if (ctx.wsId !== ws) return false; // the person switched workspace while this was loading
-      Object.assign(SOC, { accounts, growth, brands, snapshots, posts, goals, runs, status: 'ready', error: '' });
+      Object.assign(SOC, { accounts, growth, brands, snapshots, posts, postsFor: null, goals, runs, status: 'ready', error: '' });
       return true;
     } catch (e) {
       if (ctx.wsId !== ws) return false;
@@ -188,6 +182,34 @@ export async function deleteGoal(id) {
   if (blocked) return blocked;
   const { error } = await sb.from('social_goals').delete().eq('id', id);
   return error ? fail(error) : { ok: true };
+}
+
+const POST_COLUMNS = 'id, account_id, external_id, url, caption, post_type, posted_at, likes, comments, shares, views, engagement';
+let postsPending = '';
+/* The best posts of the given accounts. Without filters they come from what the page already loaded (the best of the
+   whole workspace). With a brand or network filter that list may not hold the best of a small account, so they are
+   read for those accounts; until the answer arrives the known ones are shown, and `onReady` is called when it does. */
+export function postsOnScreen(accounts, onReady) {
+  const ids = accounts.map(a => a.id);
+  const known = SOC.posts.filter(p => ids.includes(p.account_id));
+  if ((!SOC.filters.brand && !SOC.filters.platform) || !ids.length || !sb) return known;
+  const key = [...ids].sort().join(',');
+  if (SOC.postsFor?.key === key) return SOC.postsFor.rows;
+  if (postsPending !== key) {
+    postsPending = key;
+    sb.from('social_posts')
+      .select(POST_COLUMNS)
+      .in('account_id', ids)
+      .order('engagement', { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => {
+        if (postsPending === key) postsPending = '';
+        if (error) return;
+        SOC.postsFor = { key, rows: data };
+        onReady();
+      });
+  }
+  return known;
 }
 
 /* ---------- reading what was loaded ---------- */

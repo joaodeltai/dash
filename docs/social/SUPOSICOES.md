@@ -10,7 +10,7 @@ O que foi decidido sem perguntar, porque a instrução era não interromper o tr
 
 ## Produto
 
-4. **Redes conhecidas pela tela:** Instagram, TikTok, YouTube, Facebook, LinkedIn, X, Threads, Pinterest, Substack e Site. O banco aceita qualquer identificador de rede; acrescentar uma à tela é uma linha em `src/social/platforms.js`.
+4. **Redes conhecidas pela tela:** Instagram, TikTok, YouTube, Facebook, LinkedIn, X, Threads, Pinterest, Substack e Site. O X é gravado como `twitter`, porque o banco exige identificador de rede com duas letras ou mais. O banco aceita qualquer identificador de rede; acrescentar uma à tela é uma linha em `src/social/platforms.js`.
 5. **"Marca" é um texto livre na conta.** Não há cadastro de marcas. Contas com a mesma marca são somadas. A tela reaproveita a grafia de uma marca que já existe (sem diferenciar maiúsculas); o banco não normaliza.
 6. **"Totais por marca" somam a audiência de todas as contas da marca**, inclusive a de um site (usuários ativos em 28 dias), se a marca tiver um. Se o site não deve entrar na soma, dê a ele uma marca própria.
 7. **"Cartões por rede" virou um cartão por conta**, com a rede em destaque. Com uma conta por rede, é o mesmo; com várias marcas, cada conta tem o seu cartão e os filtros de marca e de rede reduzem a lista.

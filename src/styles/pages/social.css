@@ -57,6 +57,9 @@
   gap: 8px;
   align-items: center;
 }
+.soc-filters .select-btn {
+  max-width: min(280px, 100%);
+}
 .soc-v .up,
 .soc-chg.up {
   color: var(--green);
