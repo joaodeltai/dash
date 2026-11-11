@@ -20,5 +20,5 @@ export const MARK = (px = 22) =>
 export function wsLogo(w, px = 22) {
   return w && w.brand
     ? `<span class="ws-logo brand" style="width:${px}px;height:${px}px">${MARK(px)}</span>`
-    : `<span class="ws-logo" style="--c:${w.c};width:${px}px;height:${px}px;font-size:${Math.max(9, Math.round(px * 0.46))}px">${esc(w.name[0])}</span>`;
+    : `<span class="ws-logo" style="--c:${esc(w.c)};width:${px}px;height:${px}px;font-size:${Math.max(9, Math.round(px * 0.46))}px">${esc((w.name || '?')[0])}</span>`;
 }

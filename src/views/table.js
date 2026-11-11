@@ -24,7 +24,7 @@ export function tcell(t, c) {
     case 'title':
       return ed
         ? `<td class="sticky editing"><input id="edit-cell" data-blur="commitCell" data-key-enter="commitCell" data-id="${t.id}" data-f="title" value="${esc(t.title)}" aria-label="Title"></td>`
-        : `<td class="sticky cellbtn" data-a="openTask" data-id="${t.id}" data-dbl="editCell" data-f="title" title="Double-click to rename"><span class="row" style="gap:8px">${stIcon(t.status, 13)}<span class="trunc" style="font-weight:450">${esc(t.title)}</span><span class="mono faint" style="font-size:11px;margin-left:auto">${t.key}</span></span></td>`;
+        : `<td class="sticky cellbtn" data-a="openTask" data-id="${t.id}" data-dbl="editCell" data-f="title" title="Double-click to rename"><span class="row" style="gap:8px">${stIcon(t.status, 13)}<span class="trunc" style="font-weight:450">${esc(t.title)}</span><span class="mono faint" style="font-size:11px;margin-left:auto">${esc(t.key)}</span></span></td>`;
     case 'status':
       return `<td class="cellbtn" data-a="pop" data-pop="status" data-id="${t.id}"><span class="row" style="gap:6px">${stPill(t.status)}</span></td>`;
     case 'priority':
@@ -38,7 +38,7 @@ export function tcell(t, c) {
     case 'labels':
       return `<td class="cellbtn" data-a="pop" data-pop="labels" data-id="${t.id}"><span class="row" style="gap:4px">${t.labels.map(lbl).join('') || '<span class="faint">—</span>'}</span></td>`;
     case 'deps':
-      return `<td class="cellbtn" data-a="pop" data-pop="deps" data-id="${t.id}">${t.deps.map(d => (task(d) ? `<span class="depchip" title="${esc(task(d).title)}">${task(d).key}</span>` : '')).join('') || '<span class="faint">—</span>'}</td>`;
+      return `<td class="cellbtn" data-a="pop" data-pop="deps" data-id="${t.id}">${t.deps.map(d => (task(d) ? `<span class="depchip" title="${esc(task(d).title)}">${esc(task(d).key)}</span>` : '')).join('') || '<span class="faint">—</span>'}</td>`;
     case 'estimate':
       return ed
         ? `<td class="editing"><input id="edit-cell" data-blur="commitCell" data-key-enter="commitCell" data-id="${t.id}" data-f="estimate" value="${esc(t.estimate || '')}" placeholder="e.g. 2d" aria-label="Estimate"></td>`
@@ -77,5 +77,5 @@ export function tableHtml(ts, key, p) {
       .join('')}
       <tr><td class="sticky cellbtn" data-a="newTask" ${p ? `data-project="${p.id}"` : ''} colspan="${cols.length}" style="color:var(--text-3)"><span class="row" style="gap:6px">${ic('plus', 14)}New task</span></td></tr>
     </tbody></table></div>
-    <div class="only-m" style="padding:8px 16px 90px">${ts.map(t => `<div class="panel" style="padding:12px;margin-bottom:8px" data-a="openTask" data-id="${t.id}"><div class="row" style="margin-bottom:8px">${stIcon(t.status)}<b style="font-weight:500" class="grow">${esc(t.title)}</b><span class="mono faint" style="font-size:11px">${t.key}</span></div><div class="row" style="flex-wrap:wrap;gap:10px;font-size:12px" class="muted">${prPill(t.priority)}${av(t.assignee, 'sm', false)}<span class="muted">${esc(mem(t.assignee)?.name || 'Unassigned')}</span>${dueHtml(t)}${t.estimate ? `<span class="faint">${ic('timer', 12)} ${esc(t.estimate)}</span>` : ''}</div></div>`).join('')}</div>`;
+    <div class="only-m" style="padding:8px 16px 90px">${ts.map(t => `<div class="panel" style="padding:12px;margin-bottom:8px" data-a="openTask" data-id="${t.id}"><div class="row" style="margin-bottom:8px">${stIcon(t.status)}<b style="font-weight:500" class="grow">${esc(t.title)}</b><span class="mono faint" style="font-size:11px">${esc(t.key)}</span></div><div class="row" style="flex-wrap:wrap;gap:10px;font-size:12px" class="muted">${prPill(t.priority)}${av(t.assignee, 'sm', false)}<span class="muted">${esc(mem(t.assignee)?.name || 'Unassigned')}</span>${dueHtml(t)}${t.estimate ? `<span class="faint">${ic('timer', 12)} ${esc(t.estimate)}</span>` : ''}</div></div>`).join('')}</div>`;
 }

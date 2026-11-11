@@ -2,12 +2,12 @@
 import { $, MOD, MONL, TODAY, WD, addD, dOff, diffD, esc, fmtDate, iso, parse } from '../core/utils.js';
 import { ic, wsLogo } from '../core/icons.js';
 import { LABELS, PRIOS, PSTAT, STATUSES } from '../core/constants.js';
-import { D, S, allTasks, canSee, me, mem, pColor, proj, task, visibleProjects } from '../core/store.js';
+import { D, S, allTasks, canCreate, canManage, canSee, me, mem, pColor, proj, task, visibleProjects } from '../core/store.js';
 import { av, avStack, prIcon, stIcon } from '../ui/helpers.js';
 import { focusKey, render } from '../shell/render.js';
 import { FIELDS, viewOf } from '../shell/view-engine.js';
 import { TCOLS } from '../views/table.js';
-import { startOfWeek } from '../views/calendar.js';
+import { startOfWeek, visibleEvents } from '../views/calendar.js';
 import { ctxMenu } from './context-menu.js';
 
 export function openPop(el, extra = {}) {
@@ -70,7 +70,7 @@ export function popList(items, opt = {}) {
   const q = (S.ui.pop.q || '').toLowerCase();
   const list = items.filter(it => !q || it.name.toLowerCase().includes(q));
   return `${opt.search ? `<div class="pin"><input data-pop-q data-in="popQ" id="pop-q" placeholder="${opt.search}" value="${esc(S.ui.pop.q || '')}" aria-label="${opt.search}"></div>` : ''}
-    ${list.map(it => `<button class="mi" data-a="${it.act || 'popPick'}" data-v="${esc(it.id)}" role="menuitemradio" aria-checked="${!!it.on}">${it.html || ''}<span class="trunc">${esc(it.name)}</span>${it.kbd ? `<span class="r"><kbd>${it.kbd}</kbd></span>` : ''}${it.on ? `<span class="ck">${ic('check', 14)}</span>` : ''}</button>`).join('') || `<div class="mi faint" style="cursor:default">No matches</div>`}`;
+    ${list.map(it => `<button class="mi" data-a="${it.act || 'popPick'}" data-v="${esc(it.id)}" role="${opt.multi ? 'menuitemcheckbox' : 'menuitemradio'}" aria-checked="${!!it.on}">${it.html || ''}<span class="trunc">${esc(it.name)}</span>${it.kbd ? `<span class="r"><kbd>${it.kbd}</kbd></span>` : ''}${it.on ? `<span class="ck">${ic('check', 14)}</span>` : ''}</button>`).join('') || `<div class="mi faint" style="cursor:default">No matches</div>`}`;
 }
 export function miniCal(p, val) {
   const m = parse(p.m);
@@ -97,7 +97,7 @@ export function popHtml(p) {
   const t = ['status', 'priority', 'assignee', 'labels', 'date', 'project', 'deps', 'recur', 'estimate'].includes(p.type) ? tgt(p) : null;
   switch (p.type) {
     case 'create':
-      inner = `<div class="mh">Create</div><button class="mi" data-a="newTask">${ic('circle-check', 15)}Task<span class="r"><kbd>N</kbd></span></button><button class="mi" data-a="newProject">${ic('folder-plus', 15)}Project<span class="r"><kbd>P</kbd></span></button><button class="mi" data-a="newTeam">${ic('users', 15)}Team</button><div class="msep"></div><button class="mi" data-a="invite">${ic('user-plus', 15)}Invite member</button>`;
+      inner = `<div class="mh">Create</div><button class="mi" data-a="newTask">${ic('circle-check', 15)}Task<span class="r"><kbd>N</kbd></span></button><button class="mi" data-a="newEvent">${ic('calendar-plus', 15)}Event</button>${canCreate() ? `<button class="mi" data-a="newProject">${ic('folder-plus', 15)}Project<span class="r"><kbd>P</kbd></span></button>` : ''}<button class="mi" data-a="newTeam">${ic('users', 15)}Team</button>${canCreate() ? `<div class="msep"></div><button class="mi" data-a="invite">${ic('user-plus', 15)}Invite member</button>` : ''}`;
       style = 'width:220px';
       break;
     case 'subassignee': {
@@ -141,7 +141,7 @@ export function popHtml(p) {
           on: t?.labels.includes(l.id),
           act: 'popToggleLabel',
         })),
-        { search: 'Filter labels…' },
+        { search: 'Filter labels…', multi: true },
       );
       break;
     case 'project':
@@ -170,10 +170,11 @@ export function popHtml(p) {
       );
       break;
     case 'deps': {
+      if (!t) break;
       const cands = D().tasks.filter(x => x.project === t.project && x.id !== t.id && !x.archived);
       inner = popList(
         cands.map(x => ({ id: x.id, name: `${x.key}  ${x.title}`, html: stIcon(x.status), on: t.deps.includes(x.id), act: 'popToggleDep' })),
-        { search: 'Blocked by…' },
+        { search: 'Blocked by…', multi: true },
       );
       break;
     }
@@ -191,6 +192,7 @@ export function popHtml(p) {
     }
     case 'pstatus': {
       const pr = proj(p.id);
+      if (!pr) break;
       inner = popList(
         Object.entries(PSTAT).map(([k, v]) => ({
           id: k,
@@ -203,6 +205,7 @@ export function popHtml(p) {
     }
     case 'role': {
       const m = mem(p.id);
+      if (!canManage(m)) break;
       inner =
         `<div class="mh">Role for ${esc(m.name)}</div>` +
         ['Admin', 'Member', 'Guest']
@@ -218,15 +221,15 @@ export function popHtml(p) {
       inner = `<div class="mh">Workspaces</div>${D()
         .workspaces.map(
           w =>
-            `<button class="mi" data-a="switchWs" data-v="${w.id}">${wsLogo(w, 20)}<span class="grow">${esc(w.name)}</span><span class="faint" style="font-size:11px">${w.plan}</span>${w.name === D().ws.name ? `<span class="ck">${ic('check', 14)}</span>` : ''}</button>`,
+            `<button class="mi" data-a="switchWs" data-v="${w.id}">${wsLogo(w, 20)}<span class="grow">${esc(w.name)}</span><span class="faint" style="font-size:11px">${esc(w.role || '')}</span>${w.id === D().ws.id ? `<span class="ck">${ic('check', 14)}</span>` : ''}</button>`,
         )
         .join(
           '',
-        )}<div class="msep"></div><button class="mi" data-a="newWorkspace">${ic('plus', 15)}Create workspace</button><button class="mi" data-a="go" data-r="settings" data-sec="workspace">${ic('settings', 15)}Workspace settings</button><button class="mi" data-a="invite">${ic('user-plus', 15)}Invite members</button><div class="msep"></div><button class="mi" data-a="signOut">${ic('log-out', 15)}Sign out</button>`;
+        )}<div class="msep"></div><button class="mi" data-a="newWorkspace">${ic('plus', 15)}Create workspace</button><button class="mi" data-a="go" data-r="settings" data-sec="workspace">${ic('settings', 15)}Workspace settings</button>${canCreate() ? `<button class="mi" data-a="invite">${ic('user-plus', 15)}Invite members</button>` : ''}<div class="msep"></div><button class="mi" data-a="signOut">${ic('log-out', 15)}Sign out</button>`;
       style = 'width:260px';
       break;
     case 'user':
-      inner = `<div class="row" style="padding:8px 8px 10px;gap:10px">${av(D().me, 'lg', false)}<div style="min-width:0"><div style="font-weight:600">${esc(S.prefs.name)}</div><div class="faint trunc" style="font-size:12px">${esc(me().email)}</div></div></div><div class="msep"></div>
+      inner = `<div class="row" style="padding:8px 8px 10px;gap:10px">${av(D().me, 'lg', false)}<div style="min-width:0"><div style="font-weight:600">${esc(S.prefs.name)}</div><div class="faint trunc" style="font-size:12px">${esc(me()?.email)}</div></div></div><div class="msep"></div>
       <button class="mi" data-a="go" data-r="member" data-id="${D().me}">${ic('user', 15)}View profile</button><button class="mi" data-a="go" data-r="settings" data-sec="profile">${ic('settings', 15)}Account settings</button>
       <div class="msep"></div><div class="mh">Theme</div><div style="padding:2px 6px 6px"><div class="seg" style="width:100%">${[
         ['light', 'sun', 'Light'],
@@ -242,8 +245,12 @@ export function popHtml(p) {
       style = 'width:260px';
       break;
     case 'help':
-      inner = `<div class="mh">Help & resources</div><button class="mi" data-a="shortcuts">${ic('keyboard', 15)}Keyboard shortcuts<span class="r"><kbd>?</kbd></span></button><button class="mi" data-a="openPalette">${ic('command', 15)}Command menu<span class="r"><kbd>${MOD}K</kbd></span></button><button class="mi" data-a="go" data-r="system">${ic('component', 15)}Design system</button><button class="mi" data-a="go" data-r="states">${ic('layers', 15)}System states</button>
-      <div class="msep"></div><div class="mh">Prototype</div><button class="mi" data-a="startOnboarding">${ic('sparkles', 15)}Replay onboarding</button><button class="mi" data-a="toggleOffline">${ic(S.ui.offline ? 'wifi' : 'wifi-off', 15)}${S.ui.offline ? 'Go back online' : 'Simulate offline'}</button><button class="mi" data-a="go" data-r="nowhere">${ic('file-question', 15)}Open a broken link</button><button class="mi" data-a="resetDemo">${ic('rotate-ccw', 15)}Reset demo data</button>`;
+      inner = `<div class="mh">Help & resources</div><button class="mi" data-a="shortcuts">${ic('keyboard', 15)}Keyboard shortcuts<span class="r"><kbd>?</kbd></span></button><button class="mi" data-a="openPalette">${ic('command', 15)}Command menu<span class="r"><kbd>${MOD}K</kbd></span></button>${
+        // Internal component galleries exist only in development builds.
+        import.meta.env.DEV
+          ? `<div class="msep"></div><div class="mh">Development</div><button class="mi" data-a="go" data-r="system">${ic('component', 15)}Design system</button><button class="mi" data-a="go" data-r="states">${ic('layers', 15)}System states</button>`
+          : ''
+      }`;
       style = 'width:260px';
       break;
     case 'sort': {
@@ -324,14 +331,21 @@ export function popHtml(p) {
     }
     case 'daylist': {
       const ds = p.date;
-      const evs = D().events.filter(e => e.date === ds);
-      const ts = allTasks().filter(x => x.due === ds);
+      // Project calendars list only that project's items; the workspace calendar lists everything visible.
+      const pid = p.key?.startsWith('p:') ? p.key.slice(2) : p.key?.startsWith('sv:') ? D().savedViews.find(v => v.id === p.key.slice(3))?.project : null;
+      const evs = p.key === 'my' ? [] : visibleEvents(pid).filter(e => e.date === ds);
+      const ts = allTasks().filter(x => x.due === ds && (!pid || x.project === pid));
       inner =
         `<div class="mh">${fmtDate(ds, true)}</div>` +
+        (p.key === 'my'
+          ? ''
+          : `<button class="mi" data-a="newEvent" data-date="${ds}" ${pid ? `data-project="${pid}"` : ''}>${ic('calendar-plus', 14)}Add event</button>`) +
+        `<button class="mi" data-a="newTask" data-due="${ds}" ${pid ? `data-project="${pid}"` : ''}>${ic('plus', 14)}Add task</button>` +
+        (evs.length || ts.length ? '<div class="msep"></div>' : `<div class="mi faint" style="cursor:default">Nothing scheduled</div>`) +
         evs
           .map(
             e =>
-              `<button class="mi" data-a="go" data-r="project" data-id="${e.project}" data-tab="calendar">${ic('clock', 14)}${esc(e.title)}<span class="r">${e.time}</span></button>`,
+              `<button class="mi" data-a="pop" data-pop="event" data-id="${e.id}">${ic('clock', 14)}<span class="trunc">${esc(e.title)}</span><span class="r">${esc(e.time || 'All day')}</span></button>`,
           )
           .join('') +
         ts
@@ -345,8 +359,9 @@ export function popHtml(p) {
     }
     case 'event': {
       const e = D().events.find(x => x.id === p.id);
-      const pr = proj(e.project);
-      inner = `<div style="padding:10px 10px 6px"><div class="row" style="gap:8px;margin-bottom:6px"><span class="pdot" style="--c:${pColor(pr)};border-radius:50%"></span><b style="font-size:14px;font-weight:600">${esc(e.title)}</b></div><div class="muted" style="font-size:12.5px;display:flex;flex-direction:column;gap:4px"><span class="row" style="gap:6px">${ic('calendar', 13)}${fmtDate(e.date, true)} · ${e.time}</span><span class="row" style="gap:6px">${ic('folder', 13)}${esc(pr.name)}</span><span class="row" style="gap:6px">${ic('users', 13)}${avStack(pr.members, 5)}</span></div></div><div class="msep"></div><button class="mi" data-a="go" data-r="project" data-id="${pr.id}" data-tab="overview">${ic('arrow-up-right', 14)}Open project</button>`;
+      const pr = e?.project ? proj(e.project) : null;
+      if (!e || (pr && !canSee(pr))) break;
+      inner = `<div style="padding:10px 10px 6px"><div class="row" style="gap:8px;margin-bottom:6px"><span class="pdot" style="--c:${pColor(pr)};border-radius:50%"></span><b style="font-size:14px;font-weight:600;overflow-wrap:anywhere">${esc(e.title)}</b></div><div class="muted" style="font-size:12.5px;display:flex;flex-direction:column;gap:4px"><span class="row" style="gap:6px">${ic('calendar', 13)}${fmtDate(e.date, true)} · ${esc(e.time || 'All day')}</span><span class="row" style="gap:6px">${ic('folder', 13)}${esc(pr?.name || 'No project')}</span>${pr ? `<span class="row" style="gap:6px">${ic('users', 13)}${avStack(pr.members, 5)}</span>` : ''}</div></div><div class="msep"></div>${pr ? `<button class="mi" data-a="go" data-r="project" data-id="${pr.id}" data-tab="overview">${ic('arrow-up-right', 14)}Open project</button>` : ''}<button class="mi" data-a="editEvent" data-id="${e.id}">${ic('pencil', 14)}Edit event</button><button class="mi danger" data-a="delEvent" data-id="${e.id}">${ic('trash-2', 14)}Delete event</button>`;
       style = 'width:270px';
       break;
     }

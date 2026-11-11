@@ -2,7 +2,7 @@
    SHELL: render loop, router, sidebar, topbar, skeletons, filter engine
    ===================================================================== */
 import { $, $$ } from '../core/utils.js';
-import { D, S, mem, proj, team } from '../core/store.js';
+import { D, S, canSee, mem, proj, task, team, touch } from '../core/store.js';
 import { applyPrefs } from '../core/theme.js';
 import { enhanceSelects, selectMenu } from '../ui/select.js';
 import { renderShell } from './layout.js';
@@ -10,7 +10,7 @@ import { PTABS } from '../pages/project.js';
 import { tlAfter } from '../views/timeline.js';
 import { renderLayer } from '../overlays/drawer.js';
 import { placePop } from '../overlays/popovers.js';
-import { renderAuth } from '../pages/auth.js';
+import { renderAuth, renderBoot } from '../pages/auth.js';
 
 export const ROUTE_NAMES = {
   home: 'Home',
@@ -30,8 +30,8 @@ export const ROUTE_NAMES = {
   team: 'Team',
   activity: 'Activity',
   settings: 'Settings',
-  system: 'Design system',
-  states: 'System states',
+  // internal galleries, development builds only
+  ...(import.meta.env.DEV ? { system: 'Design system', states: 'System states' } : {}),
   archive: 'Archive',
 };
 export const ROUTE_ICONS = {
@@ -72,8 +72,93 @@ export function go(route, params = {}, opt = {}) {
   S.ui.loading = false;
   if (!same) fxSet(opt.tab ? { tab: true, tabs: true } : { route: true, tabs: true });
   render();
+  if (!opt.fromUrl) writeUrl(opt.back || opt.replace || same);
   const c = $('.content');
   if (c && !same) c.scrollTop = 0;
+}
+
+/* ---------- URL ⇄ route ----------
+   The address bar mirrors the current page (#/project/<id>/<tab>, #/inbox…), so reloading keeps the place,
+   the browser's Back and Forward buttons work, and links can be shared. #/task/<id> opens a task. */
+export function routeHash(route, params = {}) {
+  let h = '#/' + route;
+  if (params.id) {
+    h += '/' + encodeURIComponent(params.id);
+    if (params.tab) h += '/' + encodeURIComponent(params.tab);
+  }
+  return h;
+}
+export function writeUrl(replace) {
+  const h = routeHash(S.ui.route, S.ui.params);
+  if (location.hash === h) return;
+  try {
+    history[replace ? 'replaceState' : 'pushState'](null, '', h);
+  } catch {
+    /* history unavailable (sandboxed frame): navigation still works in memory */
+  }
+}
+export function parseHash(hash) {
+  const parts = String(hash || '')
+    .replace(/^#\/?/, '')
+    .split('/')
+    .filter(Boolean)
+    .map(x => {
+      try {
+        return decodeURIComponent(x);
+      } catch {
+        return x;
+      }
+    });
+  if (!parts.length) return null;
+  const [route, id, tab] = parts;
+  if (route === 'task') return id ? { task: id } : null;
+  if (route !== 'project' && !ROUTE_NAMES[route]) return null;
+  const params = {};
+  if (id) params.id = id;
+  if (tab) params.tab = tab;
+  return { route, params };
+}
+/* Shows what a URL points to. Unknown or inaccessible targets fall back to the start page. Returns a short
+   notice when the target could not be opened, so the caller can tell the person. */
+export function openUrl(hash, opt = {}) {
+  const target = parseHash(hash);
+  const home = () => go(S.prefs.home || 'home', {}, { replace: true, ...opt });
+  if (!target) {
+    home();
+    return null;
+  }
+  if (target.task) {
+    const t = task(target.task);
+    if (!t || !canSee(proj(t.project))) {
+      home();
+      return "That task doesn't exist or you don't have access to it.";
+    }
+    go('project', { id: t.project, tab: S.prefs.defaultTab || 'board' }, { replace: true, keepDrawer: true, ...opt });
+    S.ui.drawer = t.id;
+    S.ui.drawerFull = S.prefs.openTasks === 'full';
+    render();
+    return null;
+  }
+  if (
+    (target.route === 'project' && !proj(target.params.id)) ||
+    (target.route === 'member' && !mem(target.params.id)) ||
+    (target.route === 'team' && !team(target.params.id))
+  ) {
+    home();
+    return "That page doesn't exist or you don't have access to it.";
+  }
+  go(target.route, target.params, { replace: true, ...opt });
+  return null;
+}
+/* Back/Forward buttons and hand-edited addresses. */
+export function onUrlChange() {
+  if (S.ui.auth || S.ui.booting || S.ui.bootError || !D().me) return;
+  if (location.hash === routeHash(S.ui.route, S.ui.params)) return;
+  S.ui.drawer = null;
+  S.ui.modals = [];
+  S.ui.palette = null;
+  openUrl(location.hash, { fromUrl: true, back: true });
+  writeUrl(true); // an address that could not be opened falls back to the start page: show that address
 }
 
 /* One-shot motion flags: read by templates during the next render, then cleared, so full re-renders never replay them. */
@@ -107,7 +192,7 @@ export function tryFocus(key) {
 }
 export function pageTitle() {
   const u = S.ui;
-  if (u.auth) return 'Gr8r Studio';
+  if (u.auth || u.booting || u.bootError || !D().me) return 'Gr8r Studio';
   let t = ROUTE_NAMES[u.route] || 'Not found';
   if (u.route === 'project' && proj(u.params.id)) t = `${(PTABS.find(x => x[0] === u.params.tab) || [0, 'Saved view'])[1]} · ${proj(u.params.id).name}`;
   if (u.route === 'member' && mem(u.params.id)) t = mem(u.params.id).name;
@@ -150,8 +235,8 @@ export function render() {
     /* not supported here; safe to skip */
   }
   const keep = $$('[data-keep]').map(el => [el.dataset.keep, el.scrollTop, el.scrollLeft]);
-  $('#app').innerHTML = S.ui.auth ? renderAuth() : renderShell();
-  $('#layer').innerHTML = renderLayer();
+  $('#app').innerHTML = S.ui.booting || S.ui.bootError ? renderBoot() : S.ui.auth ? renderAuth() : renderShell();
+  $('#layer').innerHTML = S.ui.booting || S.ui.bootError ? '' : renderLayer();
   makeFocusable();
   keep.forEach(([k, t, l]) => {
     const el = document.querySelector(`[data-keep="${CSS.escape(k)}"]`);
@@ -195,6 +280,7 @@ export function render() {
   afterRender();
 }
 export function afterRender() {
+  touch();
   selectMenu.close();
   enhanceSelects();
   placePop();
