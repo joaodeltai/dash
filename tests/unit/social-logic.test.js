@@ -1,0 +1,263 @@
+/* Social media: the pure logic behind the page (numbers, dates, CSV reading, series, chart geometry, goals). */
+import { afterEach, describe, expect, it } from 'vitest';
+import { setLang } from '../../src/core/i18n.js';
+import {
+  addDays,
+  buildSeries,
+  canonicalBrand,
+  chartGeometry,
+  csvToSnapshots,
+  daysBetween,
+  fmtCompact,
+  fmtDelta,
+  fmtNum,
+  fmtPct,
+  goalProgress,
+  niceScale,
+  parseCount,
+  parseCsv,
+  parseDate,
+  todayIn,
+  trend,
+} from '../../src/social/logic.js';
+
+afterEach(() => setLang('en'));
+
+describe('numbers', () => {
+  it('formats in the language of the interface', () => {
+    expect(fmtNum(12345)).toBe('12,345');
+    expect(fmtNum(null)).toBe('—');
+    expect(fmtNum(undefined)).toBe('—');
+    expect(fmtCompact(9999)).toBe('9,999');
+    expect(fmtCompact(12345)).toBe('12.3K');
+    expect(fmtDelta(200)).toBe('+200');
+    expect(fmtDelta(-15)).toBe('−15');
+    expect(fmtDelta(0)).toBe('0');
+    expect(fmtDelta(null)).toBe('—');
+    expect(fmtPct(12.5)).toBe('+12.5%');
+    expect(fmtPct('-3.25')).toBe('−3.3%');
+    expect(fmtPct(0)).toBe('0%');
+    expect(fmtPct(null)).toBe('');
+    setLang('pt-BR');
+    expect(fmtNum(12345)).toBe('12.345');
+    expect(fmtPct(12.5)).toBe('+12,5%');
+    expect(fmtCompact(12345)).toMatch(/^12,3\smil$/);
+  });
+
+  it('says whether a change is good, bad or nothing', () => {
+    expect(trend(5)).toBe('up');
+    expect(trend(-5)).toBe('bad');
+    expect(trend(0)).toBe('');
+    expect(trend(null)).toBe('');
+  });
+
+  it('reads counts typed by a person', () => {
+    expect(parseCount('12345')).toBe(12345);
+    expect(parseCount(' 12.345 ')).toBe(12345);
+    expect(parseCount('12,345')).toBe(12345);
+    expect(parseCount('1.234.567')).toBe(1234567);
+    expect(parseCount('1,2 mil')).toBe(1200);
+    expect(parseCount('3.4k')).toBe(3400);
+    expect(parseCount('2M')).toBe(2000000);
+    expect(parseCount('0')).toBe(0);
+    expect(parseCount(77)).toBe(77);
+    for (const bad of ['', '  ', 'many', '-5', '12.5', '1,5', '1e3', '12 345 abc', '.', ',', null, undefined, -1, NaN])
+      expect(parseCount(bad), String(bad)).toBeNull();
+  });
+});
+
+describe('dates', () => {
+  it('reads the formats people use', () => {
+    expect(parseDate('2026-01-31')).toBe('2026-01-31');
+    expect(parseDate('2026-1-5')).toBe('2026-01-05');
+    expect(parseDate('31/01/2026')).toBe('2026-01-31');
+    expect(parseDate('5/1/2026')).toBe('2026-01-05');
+    expect(parseDate('31-01-2026')).toBe('2026-01-31');
+    expect(parseDate('31.01.2026')).toBe('2026-01-31');
+    expect(parseDate('2026-01-31T10:00:00Z')).toBe('2026-01-31');
+    for (const bad of ['31/02/2026', '2026-13-01', '2026-00-10', '01/31/2026', 'yesterday', '', null, '20260131', '31/01/26', '1999-12-31'])
+      expect(parseDate(bad), String(bad)).toBeNull();
+  });
+
+  it('does date arithmetic on plain dates', () => {
+    expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(daysBetween('2026-03-01', '2026-02-01')).toBe(28);
+    expect(daysBetween('2026-02-01', '2026-03-01')).toBe(-28);
+    expect(todayIn('America/Sao_Paulo', new Date('2026-11-12T02:30:00Z'))).toBe('2026-11-11');
+    expect(todayIn('America/Sao_Paulo', new Date('2026-11-12T03:00:00Z'))).toBe('2026-11-12');
+  });
+});
+
+describe('CSV', () => {
+  it('splits commas, semicolons and tabs, with quotes and a byte order mark', () => {
+    expect(parseCsv('a,b\n1,2\n').rows).toEqual([
+      ['a', 'b'],
+      ['1', '2'],
+    ]);
+    expect(parseCsv('a;b\r\n"1;x";"say ""hi"""\r\n\r\n').rows).toEqual([
+      ['a', 'b'],
+      ['1;x', 'say "hi"'],
+    ]);
+    expect(parseCsv('a\tb\n1\t2').sep).toBe('\t');
+    expect(parseCsv(String.fromCharCode(0xfeff) + 'date,followers\n2026-01-01,5').rows[0]).toEqual(['date', 'followers']);
+    expect(parseCsv('a,b\n"line\nbreak",2').rows[1]).toEqual(['line\nbreak', '2']);
+    expect(parseCsv('').rows).toEqual([]);
+    expect(parseCsv(null).rows).toEqual([]);
+  });
+
+  const accounts = [
+    { id: 'ig', platform: 'instagram', handle: '@Acme' },
+    { id: 'sb', platform: 'substack', handle: 'acmeletter' },
+  ];
+  const read = (text, opt) => csvToSnapshots(parseCsv(text), { accounts, today: '2026-11-11', ...opt });
+
+  it('turns lines into snapshots of one account', () => {
+    const r = read('Data;Seguidores;Visualizações\n01/11/2026;1.100;300\n02/11/2026;1.150;\n', { defaultAccountId: 'sb' });
+    expect(r.errors).toEqual([]);
+    expect(r.fields).toEqual(['followers', 'views']);
+    expect(r.rows).toEqual([
+      { account_id: 'sb', date: '2026-11-01', followers: 1100, views: 300 },
+      { account_id: 'sb', date: '2026-11-02', followers: 1150, views: null },
+    ]);
+  });
+
+  it('routes lines by platform and handle, whatever the capitals or the "@"', () => {
+    const r = read('date,platform,handle,followers\n2026-11-01,Instagram,acme,10\n2026-11-01,substack,@AcmeLetter,20\n2026-11-02,tiktok,nobody,1\n');
+    expect(r.rows).toEqual([
+      { account_id: 'ig', date: '2026-11-01', followers: 10 },
+      { account_id: 'sb', date: '2026-11-01', followers: 20 },
+    ]);
+    expect(r.errors).toEqual([{ line: 4, code: 'unknown-account', value: 'tiktok nobody' }]);
+  });
+
+  it('reports each bad line with its number and keeps the good ones', () => {
+    const r = read('date,followers,likes\n31/02/2026,1,1\n2026-11-12,1,1\n2026-11-03,many,1\n2026-11-04,,\n2026-11-05,7,\n', { defaultAccountId: 'ig' });
+    expect(r.errors).toEqual([
+      { line: 2, code: 'bad-date', value: '31/02/2026' },
+      { line: 3, code: 'future-date', value: '2026-11-12' },
+      { line: 4, code: 'bad-number', value: 'many' },
+      { line: 5, code: 'no-numbers' },
+    ]);
+    expect(r.rows).toEqual([{ account_id: 'ig', date: '2026-11-05', followers: 7, likes: null }]);
+    expect(r.total).toBe(5);
+  });
+
+  it('keeps the last line when a day appears twice, and sorts by day', () => {
+    const r = read('date,followers\n2026-11-03,3\n2026-11-01,1\n2026-11-03,30\n', { defaultAccountId: 'ig' });
+    expect(r.rows.map(x => [x.date, x.followers])).toEqual([
+      ['2026-11-01', 1],
+      ['2026-11-03', 30],
+    ]);
+  });
+
+  it('refuses a file it cannot make sense of', () => {
+    expect(read('').errors).toEqual([{ line: 1, code: 'empty' }]);
+    expect(read('name,total\nx,1', { defaultAccountId: 'ig' }).errors.map(e => e.code)).toEqual(['no-date-column', 'no-number-column']);
+    expect(read('date,followers\n2026-11-01,1').errors).toEqual([{ line: 1, code: 'no-account' }]);
+    expect(read('date,platform,followers\n2026-11-01,instagram,1').errors).toEqual([{ line: 1, code: 'no-account' }]);
+    expect(read('name,total\nx,1', { defaultAccountId: 'ig' }).rows).toEqual([]);
+  });
+});
+
+describe('series', () => {
+  const snaps = [
+    { account_id: 'a', date: '2026-11-01', followers: 100 },
+    { account_id: 'b', date: '2026-11-02', followers: 50 },
+    { account_id: 'a', date: '2026-11-03', followers: 120 },
+    { account_id: 'a', date: '2026-11-04', followers: null },
+    { account_id: 'c', date: '2026-11-04', followers: 999 },
+    { account_id: 'b', date: '2026-11-06', followers: 70 },
+    { account_id: 'a', date: '2026-11-09', followers: 130 },
+  ];
+  it('adds the accounts up, carrying each one forward', () => {
+    expect(buildSeries(snaps, ['a', 'b'], 'followers', '2026-11-01', '2026-11-30')).toEqual([
+      { date: '2026-11-01', value: 100 },
+      { date: '2026-11-02', value: 150 },
+      { date: '2026-11-03', value: 170 },
+      { date: '2026-11-06', value: 190 },
+      { date: '2026-11-09', value: 200 },
+    ]);
+  });
+  it('starts a window from the last value before it and stops at its end', () => {
+    expect(buildSeries(snaps, ['a', 'b'], 'followers', '2026-11-05', '2026-11-08')).toEqual([
+      { date: '2026-11-05', value: 170 },
+      { date: '2026-11-06', value: 190 },
+    ]);
+    expect(buildSeries(snaps, ['a'], 'followers', '2026-11-03', '2026-11-30')).toEqual([
+      { date: '2026-11-03', value: 120 },
+      { date: '2026-11-09', value: 130 },
+    ]);
+  });
+  it('is empty when the accounts have no number', () => {
+    expect(buildSeries(snaps, ['z'], 'followers', '2026-11-01', '2026-11-30')).toEqual([]);
+    expect(buildSeries(snaps, ['a'], 'views', '2026-11-01', '2026-11-30')).toEqual([]);
+    expect(buildSeries([], ['a'], 'followers', '2026-11-01', '2026-11-30')).toEqual([]);
+  });
+});
+
+describe('chart', () => {
+  it('chooses round axis steps', () => {
+    expect(niceScale(1000, 1800)).toEqual({ lo: 1000, hi: 1800, ticks: [1000, 1200, 1400, 1600, 1800] });
+    expect(niceScale(0, 7).ticks).toEqual([0, 2, 4, 6, 8]);
+    expect(niceScale(500, 500).ticks[0]).toBeLessThan(500);
+    expect(niceScale(500, 500).hi).toBeGreaterThan(500);
+    expect(niceScale(0, 0)).toEqual({ lo: 0, hi: 1, ticks: [0, 1] });
+    expect(niceScale(3, 4).ticks).toEqual([3, 4]);
+    expect(niceScale(NaN, 1).ticks).toEqual([0, 1]);
+  });
+  it('places points by date and value inside a 0–100 box', () => {
+    const g = chartGeometry([
+      { date: '2026-11-01', value: 1000 },
+      { date: '2026-11-06', value: 1400 },
+      { date: '2026-11-11', value: 1800 },
+    ]);
+    expect(g.pts.map(p => [p.x, p.y])).toEqual([
+      [0, 100],
+      [50, 50],
+      [100, 0],
+    ]);
+    expect(g.line).toBe('M0 100 L50 50 L100 0');
+    expect(g.area).toBe('M0 100 L50 50 L100 0 L100 100 L0 100 Z');
+    expect(chartGeometry([])).toBeNull();
+    const one = chartGeometry([{ date: '2026-11-01', value: 10 }]);
+    expect(one.pts[0].x).toBe(50);
+    expect(one.area).toBe('');
+    expect(one.pts[0].y).toBeGreaterThan(0);
+    expect(one.pts[0].y).toBeLessThan(100);
+  });
+});
+
+describe('goals and brands', () => {
+  it('measures progress and the pace still needed', () => {
+    expect(goalProgress({ target_value: 5000, target_date: '2026-12-11' }, 1800, '2026-11-11')).toEqual({
+      pct: 36,
+      remaining: 3200,
+      done: false,
+      daysLeft: 30,
+      overdue: false,
+      perDay: 107,
+    });
+    expect(goalProgress({ target_value: 5000, target_date: null }, 5200, '2026-11-11')).toEqual({
+      pct: 100,
+      remaining: 0,
+      done: true,
+      daysLeft: null,
+      overdue: false,
+      perDay: null,
+    });
+    expect(goalProgress({ target_value: 5000, target_date: '2026-11-01' }, 100, '2026-11-11')).toMatchObject({ overdue: true, perDay: null, daysLeft: -10 });
+    expect(goalProgress({ target_value: 5000, target_date: '2026-11-11' }, null, '2026-11-11')).toMatchObject({
+      pct: 0,
+      remaining: 5000,
+      perDay: null,
+      overdue: false,
+    });
+  });
+  it('reuses the spelling of a brand that already exists', () => {
+    expect(canonicalBrand('  acme ', ['Acme', 'Beta'])).toBe('Acme');
+    expect(canonicalBrand('ACME   Labs', ['Acme'])).toBe('ACME Labs');
+    expect(canonicalBrand('', ['Acme'])).toBe('');
+    expect(canonicalBrand(null, [])).toBe('');
+  });
+});

@@ -103,6 +103,7 @@ A regra desta entrega é não alterar arquivo existente além do necessário par
 - **Dados fora do motor de sincronização.** A aba lê e grava direto com `sb.from('social_…')`, num módulo próprio, em vez de entrar em `src/data/mappers.js` e `src/data/sync.js`.
 - **CSS importado pelo módulo da página**, não por `src/styles/index.css`.
 - **Diálogos desenhados pela própria página**, com as mesmas classes de modal, em vez de novos `case` em `src/overlays/modals.js`. Confirmações continuam usando `confirmDlg`.
+- **Página carregada sob demanda.** `src/pages/social.js` é só a entrada: mostra o cabeçalho e um esqueleto e faz `import('../social/page.js')` na primeira visita. O código da aba (`src/social/`) vira um arquivo à parte no build, o pacote principal continua abaixo de 500 kB (sem o aviso de tamanho do Vite) e `src/main.js` não precisa mudar: as ações da aba são registradas quando o módulo chega.
 - **Documentação em `docs/social/`**, sem tocar em `README.md` nem em `docs/*.md`.
 
-Arquivos existentes que a entrega altera, e só eles: `src/shell/render.js`, `src/shell/layout.js`, `src/main.js` e `src/i18n/pt-BR/index.js`.
+Arquivos existentes que a entrega altera, e só eles: `src/shell/render.js` (nome e ícone da rota), `src/shell/layout.js` (página e item da barra lateral) e `src/i18n/pt-BR/index.js` (dicionário).
