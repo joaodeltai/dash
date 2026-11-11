@@ -8,23 +8,18 @@ import '../styles/pages/social.css';
 import './actions.js';
 import { esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
-import { tr, trn, shortDay } from '../core/i18n.js';
+import { tr, trn } from '../core/i18n.js';
 import { D, S, canCreate } from '../core/store.js';
 import { ctx } from '../data/supabase.js';
 import { empty } from '../ui/helpers.js';
 import { render } from '../shell/render.js';
-import { SOC, accountById, growthOf, loadSocial, resetSocial } from './data.js';
-import { PLATFORMS, audienceLabel, handleHint, platformName, platformOf, profileUrl } from './platforms.js';
+import { SOC, accountById, goalOf, growthOf, loadSocial, resetSocial } from './data.js';
+import { dashboard, dateText } from './dashboard.js';
+import { PLATFORMS, audienceLabel, handleHint, platformName } from './platforms.js';
 import { CSV_COLUMNS, fmtNum, todayIn } from './logic.js';
 
 /* ---------- small pieces ---------- */
-export const dateText = d => {
-  if (!d) return '';
-  const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
-  return shortDay(new Date(y, m - 1, day), y !== new Date().getFullYear());
-};
-export const mark = platform => `<span class="soc-mark" aria-hidden="true">${esc(platformOf(platform).mark)}</span>`;
-export const accountLabel = a => `${platformName(a.platform)} · ${a.display_name || a.handle}`;
+const accountLabel = a => `${platformName(a.platform)} · ${a.display_name || a.handle}`;
 const err = (key, id) => (SOC.errors[key] ? `<span class="err" id="${id}" role="alert">${ic('circle-alert', 12)}${esc(SOC.errors[key])}</span>` : '');
 const invalid = key => (SOC.errors[key] ? 'is-error' : '');
 const option = (value, label, current) => `<option value="${esc(value)}" ${String(current ?? '') === String(value) ? 'selected' : ''}>${esc(label)}</option>`;
@@ -84,29 +79,7 @@ export function pageSocial() {
     )}</div>${dialogHtml()}`;
 
   const acts = `<button class="btn btn-secondary" data-a="socialCsv">${ic('upload', 14)}${tr('Import CSV')}</button><button class="btn btn-secondary" data-a="socialNumbers">${ic('pencil-line', 14)}${tr('Enter numbers')}</button>${addBtn}`;
-  return `<div class="page">${head(acts)}${accountsPanel()}</div>${dialogHtml()}`;
-}
-
-/* The accounts with their latest number. */
-export function accountsPanel() {
-  const rows = SOC.accounts
-    .map(a => {
-      const g = growthOf(a.id);
-      const link = profileUrl(a);
-      const name = esc(a.display_name || a.handle);
-      return `<div class="soc-arow">
-        ${mark(a.platform)}
-        <div class="soc-aname"><b class="trunc">${link ? `<a class="link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${name}</a>` : name}</b><span class="faint trunc">${esc(platformName(a.platform))} · ${esc(a.brand)}${a.is_active ? '' : ' · ' + tr('collection paused')}</span></div>
-        <div class="soc-anum"><b class="num">${g && g.followers !== null && g.followers !== undefined ? fmtNum(g.followers) : '—'}</b><span class="faint">${g && g.last_date ? dateText(g.last_date) : tr('no numbers yet')}</span></div>
-        <div class="soc-aacts">
-          <button class="ibtn ibtn-sm" data-a="socialNumbers" data-id="${a.id}" data-tip="${tr('Enter numbers')}" aria-label="${tr('Enter numbers for {name}', { name })}">${ic('pencil-line', 15)}</button>
-          <button class="ibtn ibtn-sm" data-a="socialEdit" data-id="${a.id}" data-tip="${tr('Edit account')}" aria-label="${tr('Edit {name}', { name })}">${ic('settings-2', 15)}</button>
-          <button class="ibtn ibtn-sm" data-a="socialRemove" data-id="${a.id}" data-tip="${tr('Remove account')}" aria-label="${tr('Remove {name}', { name })}">${ic('trash-2', 15)}</button>
-        </div>
-      </div>`;
-    })
-    .join('');
-  return `<section class="panel"><div class="panel-h"><h2>${tr('Accounts')}</h2><div class="acts"><span class="faint" style="font-size:11.5px">${trn('{n} account', '{n} accounts', SOC.accounts.length)}</span></div></div><div class="soc-alist">${rows}</div></section>`;
+  return `<div class="page soc-page">${head(acts)}${dashboard()}</div>${dialogHtml()}`;
 }
 
 /* ---------- dialogs ---------- */
@@ -130,6 +103,7 @@ export function dialogHtml() {
   if (d.type === 'account') return accountDialog(d);
   if (d.type === 'numbers') return numbersDialog();
   if (d.type === 'csv') return csvDialog();
+  if (d.type === 'goal') return goalDialog();
   return '';
 }
 
@@ -237,7 +211,11 @@ function csvDialog() {
     const list = shown.length
       ? `<ul class="soc-problems">${shown.map(e => `<li><span class="faint">${tr('Line {n}', { n: e.line })}</span> ${esc(csvProblem(e))}</li>`).join('')}${r.errors.length > shown.length ? `<li class="faint">${trn('and {n} more line', 'and {n} more lines', r.errors.length - shown.length)}</li>` : ''}</ul>`
       : '';
-    preview = head + list;
+    const routed =
+      r.routed && f.account_id
+        ? `<div class="hint">${ic('info', 12)} ${tr('This file names the account of each line ("platform" and "handle" columns), so the account chosen above is not used.')}</div>`
+        : '';
+    preview = head + list + routed;
   }
   const body = `<form class="modal-b" data-submit="socialCsvImport" novalidate>
     ${formError()}
@@ -249,7 +227,7 @@ function csvDialog() {
     <div class="field"><label class="label" for="soc-c-text">${tr('Or paste the lines here')}</label>
       <textarea class="input soc-paste" id="soc-c-text" data-in="socialCsvText" rows="4" spellcheck="false" placeholder="date,followers&#10;2026-01-31,12345">${esc(SOC.csv?.name ? '' : SOC.csv?.text || '')}</textarea></div>
     ${preview}
-    <div class="hint">${tr('One line per day. The first line names the columns: {cols}. Dates as 2026-01-31 or 31/01/2026. A day that already has numbers is replaced.', { cols })} <button type="button" class="link" data-a="socialCsvTemplate">${tr('Download an example')}</button></div>
+    <div class="hint">${tr('One line per day. The first line names the columns: {cols}. Dates as 2026-01-31 or 31/01/2026. The numbers in the file replace the ones already stored for that day; an empty cell changes nothing.', { cols })} <button type="button" class="link" data-a="socialCsvTemplate">${tr('Download an example')}</button></div>
   </form>`;
   return frame(
     '',
@@ -257,5 +235,30 @@ function csvDialog() {
     tr('Bring the history of any network from a spreadsheet, including Substack and others without automatic collection.'),
     body,
     `<span class="sp"></span>${cancelBtn()}<button class="btn btn-primary ${SOC.busy ? 'is-loading' : ''}" data-a="socialCsvImport" ${SOC.busy || !r?.rows.length ? 'disabled' : ''}>${r?.rows.length ? trn('Import {n} day', 'Import {n} days', r.rows.length) : tr('Import')}</button>`,
+  );
+}
+
+function goalDialog() {
+  const f = SOC.form;
+  const a = accountById(f.account_id);
+  const g = a && growthOf(a.id);
+  const existing = a && goalOf(a.id);
+  const body = `<form class="modal-b" data-submit="socialSaveGoal" novalidate>
+    ${formError()}
+    <div class="field"><label class="label" for="soc-g-account">${tr('Account')}</label><select class="select" id="soc-g-account" data-in="socialGoalAccount">${accountOptions(f.account_id)}</select></div>
+    <div class="soc-two">
+      <div class="field"><label class="label" for="soc-g-target">${a ? audienceLabel(a.platform) : tr('Followers')}</label>
+        <input class="input ${invalid('target_value')}" id="soc-g-target" data-in="socialForm" data-f="target_value" value="${esc(f.target_value)}" inputmode="numeric" autocomplete="off" autofocus placeholder="${tr('e.g. 12,345')}" aria-invalid="${!!SOC.errors.target_value}" aria-describedby="soc-g-target-err soc-g-now">${err('target_value', 'soc-g-target-err')}
+        <span class="hint" id="soc-g-now">${g && g.followers !== null && g.followers !== undefined ? tr('Today: {n}', { n: fmtNum(Number(g.followers)) }) : tr('No numbers yet for this account.')}</span></div>
+      <div class="field"><label class="label" for="soc-g-date">${tr('Reach it by')} <span class="faint" style="font-weight:400">· ${tr('optional')}</span></label>
+        <input class="input ${invalid('target_date')}" type="date" id="soc-g-date" data-in="socialForm" data-f="target_date" value="${esc(f.target_date)}" aria-invalid="${!!SOC.errors.target_date}" aria-describedby="soc-g-date-err">${err('target_date', 'soc-g-date-err')}</div>
+    </div>
+  </form>`;
+  return frame(
+    'sm',
+    existing ? tr('Edit goal') : tr('Set a goal'),
+    tr('A number to reach, followed on the card of the account.'),
+    body,
+    `${existing ? `<button class="btn btn-danger-ghost" data-a="socialDeleteGoal" data-id="${existing.id}" ${SOC.busy ? 'disabled' : ''}>${ic('trash-2', 14)}${tr('Remove goal')}</button>` : ''}<span class="sp"></span>${cancelBtn()}${saveBtn('socialSaveGoal', tr('Save goal'))}`,
   );
 }

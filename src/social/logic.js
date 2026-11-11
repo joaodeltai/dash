@@ -73,43 +73,54 @@ export function parseCount(text) {
 /* ---------- CSV ---------- */
 
 /* Splits CSV text into rows of cells. The separator (comma, semicolon or tab) is taken from the first line;
-   cells may be quoted and may contain the separator, quotes ("") and line breaks. */
+   cells may be quoted and may contain the separator, quotes ("") and line breaks. Blank lines are skipped.
+   `lines` gives, for each row, the line of the file where it starts (1 is the first), so a problem can be
+   pointed at the line the person sees in their editor. */
 export function parseCsv(text) {
   let src = String(text ?? '');
   if (src.charCodeAt(0) === 0xfeff) src = src.slice(1); // byte order mark written by spreadsheet programs
   const firstLine = src.split(/\r?\n/, 1)[0] || '';
   const count = ch => firstLine.split(ch).length - 1;
   const sep = count('\t') > count(';') && count('\t') > count(',') ? '\t' : count(';') > count(',') ? ';' : ',';
-  const rows = [];
+  const found = [];
   let row = [],
     cell = '',
-    quoted = false;
+    quoted = false,
+    line = 1,
+    start = 1;
+  const endRow = () => {
+    row.push(cell);
+    found.push({ cells: row, line: start });
+    row = [];
+    cell = '';
+  };
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
+    const breaks = c === '\n' || (c === '\r' && src[i + 1] !== '\n');
     if (quoted) {
       if (c === '"') {
         if (src[i + 1] === '"') {
           cell += '"';
           i++;
         } else quoted = false;
-      } else cell += c;
+      } else {
+        cell += c;
+        if (breaks) line++;
+      }
     } else if (c === '"' && cell === '') quoted = true;
     else if (c === sep) {
       row.push(cell);
       cell = '';
     } else if (c === '\n' || c === '\r') {
       if (c === '\r' && src[i + 1] === '\n') i++;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = '';
+      endRow();
+      line++;
+      start = line;
     } else cell += c;
   }
-  if (cell !== '' || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return { sep, rows: rows.filter(r => r.some(c => c.trim() !== '')) };
+  if (cell !== '' || row.length) endRow();
+  const kept = found.filter(r => r.cells.some(c => c.trim() !== ''));
+  return { sep, rows: kept.map(r => r.cells), lines: kept.map(r => r.line) };
 }
 
 const plain = s =>
@@ -143,10 +154,13 @@ const cleanHandle = h =>
    - With `platform` and `handle` columns each line goes to the matching account; without them every line goes to
      `defaultAccountId`.
    - Two lines for the same account and day: the last one wins.
-   Returns { rows, fields, errors, total } where errors are { line, code, value } (line 1 is the header). */
+   - An empty cell is left out of the row, so it never erases a number that is already stored.
+   Returns { rows, fields, errors, total, routed } where errors are { line, code, value } and `line` is the line
+   of the file (1 is the first). `routed` says the accounts came from the file's own columns. */
 export function csvToSnapshots(parsed, { accounts = [], defaultAccountId = '', today = todayIn() } = {}) {
-  const out = { rows: [], fields: [], errors: [], total: 0 };
+  const out = { rows: [], fields: [], errors: [], total: 0, routed: false };
   const [header, ...lines] = parsed.rows;
+  const lineOf = i => parsed.lines?.[i] ?? i + 1; // i counts rows, the header being 0
   if (!header) {
     out.errors.push({ line: 1, code: 'empty' });
     return out;
@@ -157,17 +171,18 @@ export function csvToSnapshots(parsed, { accounts = [], defaultAccountId = '', t
     for (const [field, names] of Object.entries(CSV_COLUMNS)) if (names.includes(name) && col[field] === undefined) col[field] = i;
   });
   const fields = METRICS.filter(f => col[f] !== undefined);
-  if (col.date === undefined) out.errors.push({ line: 1, code: 'no-date-column' });
-  if (!fields.length) out.errors.push({ line: 1, code: 'no-number-column' });
+  if (col.date === undefined) out.errors.push({ line: lineOf(0), code: 'no-date-column' });
+  if (!fields.length) out.errors.push({ line: lineOf(0), code: 'no-number-column' });
   const routed = col.platform !== undefined && col.handle !== undefined;
-  if (!routed && !defaultAccountId) out.errors.push({ line: 1, code: 'no-account' });
+  if (!routed && !defaultAccountId) out.errors.push({ line: lineOf(0), code: 'no-account' });
   if (out.errors.length) return out;
+  out.routed = routed;
 
   const index = new Map(accounts.map(a => [`${a.platform}|${cleanHandle(a.handle)}`, a.id]));
   const byKey = new Map();
   out.total = lines.length;
   lines.forEach((cells, i) => {
-    const line = i + 2;
+    const line = lineOf(i + 1);
     const get = f => (col[f] === undefined ? '' : (cells[col[f]] ?? '').trim());
     const date = parseDate(get('date'));
     if (!date) return out.errors.push({ line, code: 'bad-date', value: get('date') });
@@ -181,10 +196,7 @@ export function csvToSnapshots(parsed, { accounts = [], defaultAccountId = '', t
     let filled = 0;
     for (const f of fields) {
       const raw = get(f);
-      if (raw === '') {
-        row[f] = null;
-        continue;
-      }
+      if (raw === '') continue;
       const n = parseCount(raw);
       if (n === null) return out.errors.push({ line, code: 'bad-number', value: raw });
       row[f] = n;
@@ -201,17 +213,20 @@ export function csvToSnapshots(parsed, { accounts = [], defaultAccountId = '', t
 /* ---------- series ---------- */
 
 /* One value per day: the sum, over the given accounts, of each account's most recent number on or before that day.
-   Days appear only when at least one account has a number; an account adds nothing before its first snapshot.
-   `snapshots` must be sorted by date. Returns [{ date, value }] for dates in [from, to]. */
+   Before its first snapshot an account counts with that first number, the same rule the growth views use: starting
+   to follow an account is not growth, so it must not show up as a jump in the line.
+   Days appear only when at least one account has a number. `snapshots` must be sorted by date.
+   Returns [{ date, value }] for dates in [from, to]. */
 export function buildSeries(snapshots, accountIds, metric, from, to) {
   const ids = new Set(accountIds);
-  const last = new Map();
+  const rows = snapshots.filter(s => ids.has(s.account_id) && isNum(s[metric]) && s.date <= to);
+  const current = new Map();
+  for (const s of rows) if (!current.has(s.account_id)) current.set(s.account_id, s[metric]);
   const days = new Map();
-  for (const s of snapshots) {
-    if (!ids.has(s.account_id) || !isNum(s[metric]) || s.date > to) continue;
-    last.set(s.account_id, s[metric]);
+  for (const s of rows) {
+    current.set(s.account_id, s[metric]);
     let sum = 0;
-    for (const v of last.values()) sum += v;
+    for (const v of current.values()) sum += v;
     days.set(s.date, sum);
   }
   const all = [...days.entries()].map(([date, value]) => ({ date, value }));

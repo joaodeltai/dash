@@ -118,8 +118,9 @@ describe('CSV', () => {
     expect(r.fields).toEqual(['followers', 'views']);
     expect(r.rows).toEqual([
       { account_id: 'sb', date: '2026-11-01', followers: 1100, views: 300 },
-      { account_id: 'sb', date: '2026-11-02', followers: 1150, views: null },
+      { account_id: 'sb', date: '2026-11-02', followers: 1150 }, // an empty cell is left out: it erases nothing
     ]);
+    expect(r.routed).toBe(false);
   });
 
   it('routes lines by platform and handle, whatever the capitals or the "@"', () => {
@@ -129,6 +130,25 @@ describe('CSV', () => {
       { account_id: 'sb', date: '2026-11-01', followers: 20 },
     ]);
     expect(r.errors).toEqual([{ line: 4, code: 'unknown-account', value: 'tiktok nobody' }]);
+    expect(r.routed).toBe(true);
+  });
+
+  it('points at the line of the file, whatever comes before it', () => {
+    // a blank line and a line with separators only do not shift the numbers
+    expect(read('date,followers\n\n2026-11-01,x', { defaultAccountId: 'ig' }).errors).toEqual([{ line: 3, code: 'bad-number', value: 'x' }]);
+    expect(read('date,followers\n2026-11-01,1\n,\n2026-11-02,x', { defaultAccountId: 'ig' }).errors).toEqual([{ line: 4, code: 'bad-number', value: 'x' }]);
+    // nor does a quoted cell that spans two lines, nor Windows line ends, nor blank lines before the header
+    expect(read('date,followers,likes\n2026-11-01,1,"1\n0"\n2026-11-02,x,1', { defaultAccountId: 'ig' }).errors).toEqual([
+      { line: 4, code: 'bad-number', value: 'x' },
+    ]);
+    expect(read('date;followers\r\n\r\n\r\n01/11/2026;5\r\n31/02/2026;5\r\n', { defaultAccountId: 'ig' }).errors).toEqual([
+      { line: 5, code: 'bad-date', value: '31/02/2026' },
+    ]);
+    expect(read('\n\nname,total\nx,1', { defaultAccountId: 'ig' }).errors).toEqual([
+      { line: 3, code: 'no-date-column' },
+      { line: 3, code: 'no-number-column' },
+    ]);
+    expect(parseCsv('a,b\n\n1,2\n"x\ny",3\n4,5').lines).toEqual([1, 3, 4, 6]);
   });
 
   it('reports each bad line with its number and keeps the good ones', () => {
@@ -139,7 +159,7 @@ describe('CSV', () => {
       { line: 4, code: 'bad-number', value: 'many' },
       { line: 5, code: 'no-numbers' },
     ]);
-    expect(r.rows).toEqual([{ account_id: 'ig', date: '2026-11-05', followers: 7, likes: null }]);
+    expect(r.rows).toEqual([{ account_id: 'ig', date: '2026-11-05', followers: 7 }]);
     expect(r.total).toBe(5);
   });
 
@@ -170,9 +190,10 @@ describe('series', () => {
     { account_id: 'b', date: '2026-11-06', followers: 70 },
     { account_id: 'a', date: '2026-11-09', followers: 130 },
   ];
-  it('adds the accounts up, carrying each one forward', () => {
+  it('adds the accounts up, carrying each one forward, and counts an account from its first number', () => {
+    // b is first seen on the 2nd with 50: it counts as 50 on the 1st too, so following a new account is not a jump
     expect(buildSeries(snaps, ['a', 'b'], 'followers', '2026-11-01', '2026-11-30')).toEqual([
-      { date: '2026-11-01', value: 100 },
+      { date: '2026-11-01', value: 150 },
       { date: '2026-11-02', value: 150 },
       { date: '2026-11-03', value: 170 },
       { date: '2026-11-06', value: 190 },

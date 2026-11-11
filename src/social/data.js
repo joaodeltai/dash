@@ -20,8 +20,9 @@ export const SOC = {
   posts: [],
   goals: [],
   runs: [],
-  filters: { brand: '', platform: '', period: '90', metric: 'followers' },
+  filters: { brand: '', platform: '', account: '', period: '90' },
   table: false, // chart shown as a table
+  chart: null, // points of the chart on screen (read by the hover layer)
   dialog: null, // { type, id? }
   form: {},
   errors: {},
@@ -32,7 +33,8 @@ export const SOC = {
 export function resetSocial() {
   Object.assign(SOC, { ws: null, status: 'idle', error: '', accounts: [], growth: [], brands: [], snapshots: [], posts: [], goals: [], runs: [] });
   Object.assign(SOC, { dialog: null, form: {}, errors: {}, busy: false, csv: null, table: false });
-  SOC.filters = { brand: '', platform: '', period: '90', metric: 'followers' };
+  SOC.filters = { brand: '', platform: '', account: '', period: '90' };
+  SOC.chart = null;
 }
 
 /* The tables of this area do not exist in the database yet (the migration has not been applied there). */
@@ -147,18 +149,29 @@ export async function deleteAccount(id) {
   return error ? fail(error) : { ok: true };
 }
 
-/* Writes one snapshot per account and day; a day that already has numbers is replaced. Every row must carry the
-   same fields. `source` is "manual" or "csv". */
+/* Writes one snapshot per account and day; a day that already has numbers gets the new ones, and a number that is
+   not in the row is left as it was. `source` is "manual" or "csv". */
 export async function saveSnapshots(rows, source) {
   const blocked = guard();
   if (blocked) return blocked;
   const stamp = new Date().toISOString();
-  for (let i = 0; i < rows.length; i += 500) {
-    const part = rows.slice(i, i + 500).map(r => ({ ...r, source, collected_at: stamp }));
-    const { error } = await sb.from('social_snapshots').upsert(part, { onConflict: 'account_id,date' });
-    if (error) return { ...fail(error), written: i };
+  // rows sent together must carry the same fields (a missing field would be written as empty): group them by shape
+  const shapes = new Map();
+  for (const r of rows) {
+    const shape = Object.keys(r).sort().join(',');
+    if (!shapes.has(shape)) shapes.set(shape, []);
+    shapes.get(shape).push({ ...r, source, collected_at: stamp });
   }
-  return { ok: true, written: rows.length };
+  let written = 0;
+  for (const group of shapes.values()) {
+    for (let i = 0; i < group.length; i += 500) {
+      const part = group.slice(i, i + 500);
+      const { error } = await sb.from('social_snapshots').upsert(part, { onConflict: 'account_id,date' });
+      if (error) return { ...fail(error), written };
+      written += part.length;
+    }
+  }
+  return { ok: true, written };
 }
 
 export async function saveGoal({ account_id, target_value, target_date }) {

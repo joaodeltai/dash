@@ -7,9 +7,10 @@ import { tr, trn } from '../core/i18n.js';
 import { toast } from '../ui/toast.js';
 import { render } from '../shell/render.js';
 import { A, IN, confirmDlg } from '../actions/actions.js';
-import { SOC, accountById, deleteAccount, loadSocial, saveAccount, saveSnapshots } from './data.js';
-import { canonicalBrand, csvToSnapshots, parseCount, parseCsv, parseDate, todayIn } from './logic.js';
+import { SOC, accountById, deleteAccount, deleteGoal, filteredAccounts, goalOf, loadSocial, saveAccount, saveGoal, saveSnapshots } from './data.js';
+import { canonicalBrand, csvToSnapshots, fmtDelta, fmtNum, parseCount, parseCsv, parseDate, todayIn } from './logic.js';
 import { platformName } from './platforms.js';
+import { dateText } from './dashboard.js';
 
 const MAX_CSV_BYTES = 2 * 1024 * 1024;
 
@@ -135,7 +136,7 @@ A.socialSaveAccount = async () => {
   if (!brand) errors.brand = tr('Give the brand a name.');
   if (!handle) errors.handle = tr('Type the account.');
   else if (f.platform === 'website' && !/^\d+$/.test(handle)) errors.handle = tr('For a website this is the GA4 property ID: digits only.');
-  if (url && !/^https?:\/\/\S+$/i.test(url)) errors.url = tr('The address must start with https://');
+  if (url && !/^https?:\/\/[^\s"'<>`]+$/i.test(url)) errors.url = tr('Type a web address that starts with https:// and has no spaces or quotes.');
   SOC.errors = errors;
   if (Object.keys(errors).length) {
     render();
@@ -173,7 +174,12 @@ A.socialRemove = el => {
 /* ---------- numbers typed by hand ---------- */
 const NUMBER_KEYS = ['followers', 'following', 'posts_count', 'views', 'likes', 'comments', 'shares'];
 A.socialNumbers = el => {
-  const id = el?.dataset?.id && accountById(el.dataset.id) ? el.dataset.id : SOC.accounts[0]?.id;
+  // from a card: that account; from a network alert: the first account of that network; otherwise the first on screen
+  const id =
+    (el?.dataset?.id && accountById(el.dataset.id) ? el.dataset.id : null) ||
+    (el?.dataset?.platform ? SOC.accounts.find(a => a.platform === el.dataset.platform)?.id : null) ||
+    filteredAccounts()[0]?.id ||
+    SOC.accounts[0]?.id;
   if (!id) return;
   openDialog(
     { type: 'numbers' },
@@ -300,5 +306,141 @@ A.socialCsvImport = async () => {
     return;
   }
   SOC.errors = { form: res.written ? tr('The import stopped part of the way: {n} days were saved. Try again to finish.', { n: res.written }) : problem(res) };
+  render();
+};
+
+/* ---------- filters and chart controls ---------- */
+IN.socialFilter = el => {
+  SOC.filters[el.dataset.f] = el.value;
+  render();
+};
+A.socialClearFilters = () => {
+  Object.assign(SOC.filters, { brand: '', platform: '', account: '' });
+  render();
+};
+A.socialPeriod = el => {
+  SOC.filters.period = el.dataset.v;
+  render();
+};
+A.socialToggleTable = () => {
+  SOC.table = !SOC.table;
+  render();
+};
+
+/* ---------- chart: reading one day ----------
+   Pointer and arrow keys move a marker along the line; the box next to it shows the day, the number and the change
+   since the previous point. The page is not drawn again for this. */
+let at = -1;
+function showPoint(plot, i) {
+  const pts = SOC.chart?.pts;
+  const tip = $('.soc-tip', plot);
+  const cross = $('.soc-cross', plot);
+  const dot = $('.soc-hover', plot);
+  if (!pts?.length || !tip) return;
+  if (i < 0) {
+    at = -1;
+    tip.hidden = cross.hidden = dot.hidden = true;
+    return;
+  }
+  at = Math.max(0, Math.min(pts.length - 1, i));
+  const p = pts[at];
+  const prev = pts[at - 1];
+  cross.style.left = dot.style.left = p.x + '%';
+  dot.style.top = p.y + '%';
+  tip.innerHTML = `<span class="faint">${dateText(p.date, true)}</span><b class="num">${fmtNum(p.value)}</b>${prev ? `<span class="num faint">${fmtDelta(p.value - prev.value)}</span>` : ''}`;
+  tip.style.left = p.x + '%';
+  tip.dataset.side = p.x < 18 ? 'start' : p.x > 82 ? 'end' : 'mid';
+  tip.dataset.low = p.y < 30 ? '1' : '';
+  tip.hidden = cross.hidden = dot.hidden = false;
+}
+function nearest(plot, clientX) {
+  const pts = SOC.chart?.pts || [];
+  const box = plot.getBoundingClientRect();
+  const x = ((clientX - box.left) / Math.max(1, box.width)) * 100;
+  let best = 0;
+  for (let i = 1; i < pts.length; i++) if (Math.abs(pts[i].x - x) < Math.abs(pts[best].x - x)) best = i;
+  return best;
+}
+document.addEventListener('pointermove', e => {
+  const plot = e.target.closest?.('.soc-plot');
+  if (plot) showPoint(plot, nearest(plot, e.clientX));
+});
+document.addEventListener('pointerdown', e => {
+  const plot = e.target.closest?.('.soc-plot');
+  if (plot) showPoint(plot, nearest(plot, e.clientX));
+});
+document.addEventListener(
+  'pointerleave',
+  e => {
+    if (e.target.classList?.contains('soc-plot') && e.pointerType === 'mouse') showPoint(e.target, -1);
+  },
+  true,
+);
+document.addEventListener('focusout', e => {
+  if (e.target.classList?.contains('soc-plot')) showPoint(e.target, -1);
+});
+document.addEventListener('keydown', e => {
+  const plot = e.target.classList?.contains('soc-plot') ? e.target : null;
+  const n = SOC.chart?.pts?.length;
+  if (!plot || !n) return;
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  if (step) showPoint(plot, at < 0 ? (step > 0 ? 0 : n - 1) : at + step);
+  else if (e.key === 'Home') showPoint(plot, 0);
+  else if (e.key === 'End') showPoint(plot, n - 1);
+  else if (e.key === 'Escape' && at >= 0) showPoint(plot, -1);
+  else return;
+  e.preventDefault();
+});
+
+/* ---------- goals ---------- */
+const goalForm = id => {
+  const g = goalOf(id);
+  return { account_id: id, target_value: g ? String(g.target_value) : '', target_date: g?.target_date || '' };
+};
+A.socialGoal = el => {
+  const fromCard = el?.dataset?.id && accountById(el.dataset.id) ? el.dataset.id : null;
+  const id = fromCard || filteredAccounts().find(a => !goalOf(a.id))?.id || filteredAccounts()[0]?.id || SOC.accounts[0]?.id;
+  if (!id) return;
+  openDialog({ type: 'goal' }, goalForm(id));
+};
+IN.socialGoalAccount = el => {
+  SOC.form = goalForm(el.value);
+  SOC.errors = {};
+  render();
+};
+A.socialSaveGoal = async () => {
+  if (!SOC.dialog || SOC.dialog.type !== 'goal' || SOC.busy) return;
+  const f = SOC.form;
+  const a = accountById(f.account_id);
+  const errors = {};
+  const target = parseCount(f.target_value);
+  if (target === null || target < 1) errors.target_value = tr('Type the number to reach.');
+  const date = f.target_date ? parseDate(f.target_date) : '';
+  if (f.target_date && !date) errors.target_date = tr('Choose the day.');
+  if (!a) errors.form = tr('Choose the account.');
+  SOC.errors = errors;
+  if (Object.keys(errors).length) {
+    render();
+    $('.soc-dialog .is-error')?.focus();
+    return;
+  }
+  const res = await commit(() => saveGoal({ account_id: a.id, target_value: target, target_date: date || null }));
+  if (res.ok) {
+    closeDialog();
+    toast(tr('Goal saved for {name}', { name: a.display_name || a.handle }));
+    return;
+  }
+  SOC.errors = { form: problem(res) };
+  render();
+};
+A.socialDeleteGoal = async el => {
+  if (SOC.busy) return;
+  const res = await commit(() => deleteGoal(el.dataset.id));
+  if (res.ok) {
+    closeDialog();
+    toast(tr('Goal removed'));
+    return;
+  }
+  SOC.errors = { form: problem(res) };
   render();
 };
