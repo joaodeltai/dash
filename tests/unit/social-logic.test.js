@@ -182,7 +182,7 @@ describe('CSV', () => {
     expect(read('\n sep=; \ndate;followers\n2026-11-01;7', { defaultAccountId: 'ig' }).rows).toEqual([{ account_id: 'ig', date: '2026-11-01', followers: 7 }]);
     // the announcement alone, or a header alone, is an empty import, not an error about the wrong line
     expect(read('sep=;\n', { defaultAccountId: 'ig' }).errors).toEqual([{ line: 1, code: 'empty' }]);
-    expect(read('date,followers\n', { defaultAccountId: 'ig' })).toMatchObject({ rows: [], errors: [], total: 0 });
+    expect(read('date,followers\n', { defaultAccountId: 'ig' })).toMatchObject({ rows: [], errors: [{ line: 1, code: 'no-lines' }], total: 0 });
     // a first line with only one column still reads: there is no separator to find
     expect(read('\ndate\n2026-11-01\n', { defaultAccountId: 'ig' }).errors.map(e => e.code)).toEqual(['no-number-column']);
   });

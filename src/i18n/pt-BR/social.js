@@ -178,6 +178,7 @@ export default {
   'No account matches {value}. Add the account first.': 'Nenhuma conta corresponde a {value}. Adicione a conta antes.',
   '{value} is not a number.': '{value} não é um número.',
   'The line has no numbers.': 'A linha não tem números.',
+  'The file has the column names but no lines below them.': 'O arquivo tem os nomes das colunas, mas nenhuma linha abaixo deles.',
   'The line could not be read.': 'Não foi possível ler a linha.',
   'The file is larger than 2 MB. Split it and import in parts.': 'O arquivo tem mais de 2 MB. Divida-o e importe em partes.',
   "The file couldn't be read.": 'Não foi possível ler o arquivo.',

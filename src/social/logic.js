@@ -184,6 +184,7 @@ export function csvToSnapshots(parsed, { accounts = [], defaultAccountId = '', t
   if (!fields.length) out.errors.push({ line: lineOf(0), code: 'no-number-column' });
   const routed = col.platform !== undefined && col.handle !== undefined;
   if (!routed && !defaultAccountId) out.errors.push({ line: lineOf(0), code: 'no-account' });
+  if (!out.errors.length && !lines.length) out.errors.push({ line: lineOf(0), code: 'no-lines' });
   if (out.errors.length) return out;
   out.routed = routed;
 

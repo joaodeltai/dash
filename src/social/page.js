@@ -189,6 +189,8 @@ export function csvProblem(e) {
       return tr('No account matches {value}. Add the account first.', { value: v });
     case 'bad-number':
       return tr('{value} is not a number.', { value: v });
+    case 'no-lines':
+      return tr('The file has the column names but no lines below them.');
     case 'no-numbers':
       return tr('The line has no numbers.');
     default:
