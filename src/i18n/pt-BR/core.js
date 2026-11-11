@@ -32,6 +32,9 @@ export default {
   'converted a subtask of': 'converteu uma subtarefa de',
   deleted: 'excluiu',
   'deleted project': 'excluiu o projeto',
+  'created project': 'criou o projeto',
+  'changed status of project': 'alterou o status do projeto',
+  'No team': 'Sem equipe',
   updated: 'atualizou',
 
   // ---- complementos do histórico ----

@@ -202,10 +202,19 @@ export function createSync({ getClient, getContext, getState, onStatus, onReject
       }
     }
     // deletes: children first
+    // A project deleted in this cycle takes its tasks with it (cascade). Deleting them one by one first would
+    // record each as a separate "deleted" entry in the history, on top of the one for the project.
+    const doomedProjects = new Set((ops.projects?.deletes || []).map(x => x.row.id));
     for (const { name, pk, mode, deletable } of [...TABLES].reverse()) {
       const o = ops[name];
       if (!o?.deletes.length) continue;
       const base = baseline[name];
+      if (name === 'tasks' && doomedProjects.size) {
+        const cascaded = o.deletes.filter(x => doomedProjects.has(x.row.project_id));
+        for (const x of cascaded) base.delete(x.key);
+        o.deletes = o.deletes.filter(x => !doomedProjects.has(x.row.project_id));
+        if (!o.deletes.length) continue;
+      }
       if (mode === 'full' || deletable) {
         if (pk.length === 1) {
           for (let i = 0; i < o.deletes.length; i += CHUNK) {

@@ -1,7 +1,7 @@
 /* ---------- store ---------- */
 import { TODAY, diffD, iso, parse, uid } from './utils.js';
 import { PCOLORS } from './constants.js';
-import { detectLang, isLang } from './i18n.js';
+import { detectLang, isLang, tr } from './i18n.js';
 import { emptyData, normalize } from '../data/mappers.js';
 
 /* Workspace data lives in Supabase (see src/data/backend.js). Only presentation preferences are cached in
@@ -163,7 +163,16 @@ export function logAct(verb, t, extra = '') {
 }
 
 /* ---------- teams ---------- */
-export const NO_TEAM = { id: '', name: 'No team', icon: 'users', c: '#8A867E', desc: '' };
+/* Stands in for "no team" wherever a team is shown; never stored. Its name follows the current language. */
+export const NO_TEAM = {
+  id: '',
+  get name() {
+    return tr('No team');
+  },
+  icon: 'users',
+  c: '#8A867E',
+  desc: '',
+};
 export function teamsList() {
   const d = D();
   if (!d.teams) d.teams = [];

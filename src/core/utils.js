@@ -70,6 +70,11 @@ export const uid = () =>
   crypto.randomUUID
     ? crypto.randomUUID()
     : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16));
+/* Accented letters become their plain form ("Estúdio" → "Estudio"), for handles and other ASCII identifiers. */
+export const unaccent = s =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const MOD = isMac ? '⌘' : 'Ctrl';

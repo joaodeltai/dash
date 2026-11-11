@@ -326,6 +326,23 @@ describe('deletes and undo', () => {
 
   it('deletes children before parents', async () => {
     const { d, fake, sync } = setup(st => {
+      st.data.tasks.push(makeTask({ id: 't1', subtasks: [{ id: 's1', title: 's' }], deps: [] }));
+      st.data.comments.push({ id: 'c1', task: 't1', by: ids.me, at: 1, text: 'x', re: {} });
+      st.data.files.push(file('f1', { task: 't1' }));
+    });
+    d.tasks = d.tasks.filter(t => t.id !== 't1'); // normalize cascades to comments; the file is detached
+    d.files = [];
+    await sync.flush({ force: true });
+    const order = fake.of('delete').map(c => c.table);
+    expect(order).toEqual(expect.arrayContaining(['comments', 'files', 'subtasks', 'tasks']));
+    const idx = n => order.indexOf(n);
+    for (const child of ['comments', 'files', 'subtasks']) expect(idx(child), child).toBeLessThan(idx('tasks'));
+    const rank = n => TABLES.findIndex(t => t.name === n);
+    expect(order.map(rank)).toEqual([...order.map(rank)].sort((a, b) => b - a));
+  });
+
+  it('deleting a project deletes what hangs from it first, and leaves its tasks to the cascade', async () => {
+    const { d, fake, sync } = setup(st => {
       st.data.projects.push({ id: 'p2', key: 'B', name: 'B', members: [ids.me], perms: {}, milestones: [], created: 2 });
       st.data.tasks.push(makeTask({ id: 't1', project: 'p2', subtasks: [{ id: 's1', title: 's' }], deps: [] }));
       st.data.comments.push({ id: 'c1', task: 't1', by: ids.me, at: 1, text: 'x', re: {} });
@@ -334,15 +351,12 @@ describe('deletes and undo', () => {
     d.projects = d.projects.filter(p => p.id !== 'p2'); // normalize cascades to tasks, comments and files
     await sync.flush({ force: true });
     const order = fake.of('delete').map(c => c.table);
-    expect(order).toEqual(expect.arrayContaining(['comments', 'files', 'subtasks', 'tasks', 'project_members', 'projects']));
+    expect(order).toEqual(expect.arrayContaining(['comments', 'files', 'subtasks', 'project_members', 'projects']));
+    // the tasks go with the project in the database, so the history records one deletion, not one per task
+    expect(order).not.toContain('tasks');
     const idx = n => order.indexOf(n);
     for (const child of ['comments', 'files', 'subtasks', 'project_members']) expect(idx(child), child).toBeLessThan(idx('projects'));
-    expect(idx('comments')).toBeLessThan(idx('tasks'));
-    expect(idx('subtasks')).toBeLessThan(idx('tasks'));
-    expect(idx('files')).toBeLessThan(idx('tasks'));
-    expect(idx('tasks')).toBeLessThan(idx('projects'));
-    const rank = n => TABLES.findIndex(t => t.name === n);
-    expect(order.map(rank)).toEqual([...order.map(rank)].sort((a, b) => b - a));
+    expect(sync.pending()).toBe(0);
   });
 
   it('a delete that shares its table with a pending insert is sent without waiting (unique constraints)', async () => {
@@ -792,5 +806,36 @@ describe('columns decided by the database (task keys)', () => {
     expect(sync.baselineRow('tasks', 't1').key).toBe('APP-230');
     expect(d.tasks[0].key).toBe('APP-230');
     expect(seen.server).toEqual([{ table: 'tasks', rows: [{ id: 't1', key: 'APP-230' }] }]);
+  });
+});
+
+describe('deleting a project', () => {
+  it('leaves its tasks to the cascade: one request for the project, none for each task', async () => {
+    const { d, fake, sync } = setup(st => {
+      st.data.projects.push({ ...st.data.projects[0], id: ids.p2, key: 'APP', name: 'App', members: [], perms: {} });
+      st.data.tasks.push(makeTask({ id: 't1' }), makeTask({ id: 't2' }), makeTask({ id: 't3', project: ids.p2 }));
+    });
+    d.projects = d.projects.filter(p => p.id !== ids.p1);
+    d.projOrder = d.projOrder.filter(x => x !== ids.p1);
+    await sync.flush({ force: true });
+    expect(fake.of('delete', 'tasks')).toEqual([]);
+    expect(fake.of('delete', 'projects')).toHaveLength(1);
+    expect(sync.baselineRow('tasks', 't1')).toBeUndefined();
+    expect(sync.baselineRow('tasks', 't3')).toBeDefined();
+    expect(sync.pending()).toBe(0);
+  });
+
+  it('a task deleted on its own in the same cycle is still deleted explicitly', async () => {
+    const { d, fake, sync } = setup(st => {
+      st.data.projects.push({ ...st.data.projects[0], id: ids.p2, key: 'APP', name: 'App', members: [], perms: {} });
+      st.data.tasks.push(makeTask({ id: 't1' }), makeTask({ id: 't3', project: ids.p2 }));
+    });
+    d.projects = d.projects.filter(p => p.id !== ids.p1);
+    d.projOrder = d.projOrder.filter(x => x !== ids.p1);
+    d.tasks = d.tasks.filter(t => t.id !== 't3');
+    await sync.flush({ force: true });
+    const call = fake.of('delete', 'tasks');
+    expect(call).toHaveLength(1);
+    expect(call[0].filter.in).toEqual(['id', ['t3']]);
   });
 });

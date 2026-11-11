@@ -128,6 +128,7 @@ describe('stored activity and notification text', () => {
     expect(actExtra(a('renamed', 'to “Novo título”'))).toBe('para “Novo título”');
     expect(actExtra(a('converted a subtask of', 'into WEB-204'))).toBe('em WEB-204');
     expect(actExtra(a('deleted', 'WEB-201'))).toBe('WEB-201');
+    expect(actExtra(a('changed status of project', 'to At Risk'))).toBe('para Em risco');
   });
 
   it('every verb the app or the database writes has a Portuguese text', () => {
@@ -158,6 +159,8 @@ describe('stored activity and notification text', () => {
       'converted a subtask of',
       'deleted',
       'deleted project',
+      'created project',
+      'changed status of project',
     ];
     for (const v of verbs) expect(hasTr(v), v).toBe(true);
   });

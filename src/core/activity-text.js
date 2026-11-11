@@ -39,7 +39,7 @@ export function actExtra(a) {
   if ((m = /^to (.+)$/.exec(x))) {
     if (verb === 'assigned' || verb === 'assigned a subtask on') return tr('to {x}|person', { x: m[1] });
     if (verb === 'changed due date of' || verb === 'changed start date of') return tr('to {x}', { x: dateOrText(m[1]) });
-    if (verb === 'changed priority of') return tr('to {x}', { x: known(m[1]) });
+    if (verb === 'changed priority of' || verb === 'changed status of project') return tr('to {x}', { x: known(m[1]) });
     return tr('to {x}', { x: m[1] }); // a project name or a new title: the person's own words
   }
   if ((m = /^into (.+)$/.exec(x))) return tr('into {x}', { x: m[1] });

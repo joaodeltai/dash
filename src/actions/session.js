@@ -2,7 +2,7 @@
    SESSION ACTIONS: sign-in, sign-up, password recovery, onboarding,
    workspaces. Everything here talks to the backend (Supabase).
    ===================================================================== */
-import { $, $$, uid } from '../core/utils.js';
+import { $, $$, uid, unaccent } from '../core/utils.js';
 import { isLang, tr } from '../core/i18n.js';
 import { TEAMS_SEED } from '../core/constants.js';
 import { D, S, cachePrefs, me, save } from '../core/store.js';
@@ -294,7 +294,7 @@ IN.onbWs = el => {
   const o = S.ui.onbData;
   o.ws = el.value;
   if (!o.urlTouched)
-    o.url = el.value
+    o.url = unaccent(el.value)
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
@@ -304,7 +304,9 @@ IN.onbWs = el => {
   render();
 };
 IN.onbUrl = el => {
-  S.ui.onbData.url = el.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  S.ui.onbData.url = unaccent(el.value)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-');
   S.ui.onbData.urlTouched = true;
   checkSlug();
   render();
@@ -442,8 +444,8 @@ A.newWorkspace = () => {
 };
 A.saveWorkspace = () => {
   const n = $('#ws-name').value.trim();
-  const u = $('#ws-url')
-    .value.trim()
+  const u = unaccent($('#ws-url').value)
+    .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '');

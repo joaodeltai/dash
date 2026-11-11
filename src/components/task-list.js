@@ -132,7 +132,7 @@ export function actHtml(a, opt = {}) {
   const t = a.task ? task(a.task) : null;
   const p = a.project ? proj(a.project) : null;
   // an entry about the project itself (no task) carries the project's name as its label
-  const aboutProject = !a.task && p && (!a.label || a.label === p.name);
+  const aboutProject = !a.task && p && (!a.label || a.label === p.name || a.verb === 'created project' || a.verb === 'changed status of project');
   const obj = t
     ? `<span class="obj" data-a="openTask" data-id="${t.id}">${esc(t.title)}</span>`
     : aboutProject
@@ -145,7 +145,7 @@ export function actHtml(a, opt = {}) {
     ? ''
     : p && !aboutProject
       ? tr('in {project}', { project: p.name })
-      : !p && a.projectName && a.verb !== 'deleted project'
+      : !p && a.projectName && a.label !== a.projectName
         ? tr('in {project}', { project: tr('{project} (deleted)', { project: a.projectName }) })
         : '';
   return `<div class="fitem">${authorAv(a.by, 'sm')}<div class="grow"><b>${esc(a.by && a.by === D().me ? tr('You') : authorName(a.by))}</b> <span class="muted">${esc(actVerb(a))}</span> ${obj} ${extra ? `<span class="muted">${esc(extra)}</span>` : ''}${where ? ` <span class="faint">${esc(where)}</span>` : ''}</div><time>${ago(a.at)}</time></div>`;
