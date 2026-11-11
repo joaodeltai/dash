@@ -2,7 +2,7 @@
    SHELL: render loop, router, sidebar, topbar, skeletons, filter engine
    ===================================================================== */
 import { $, $$ } from '../core/utils.js';
-import { D, S, canSee, mem, proj, task, team } from '../core/store.js';
+import { D, S, canSee, mem, proj, task, team, touch } from '../core/store.js';
 import { applyPrefs } from '../core/theme.js';
 import { enhanceSelects, selectMenu } from '../ui/select.js';
 import { renderShell } from './layout.js';
@@ -158,6 +158,7 @@ export function onUrlChange() {
   S.ui.modals = [];
   S.ui.palette = null;
   openUrl(location.hash, { fromUrl: true, back: true });
+  writeUrl(true); // an address that could not be opened falls back to the start page: show that address
 }
 
 /* One-shot motion flags: read by templates during the next render, then cleared, so full re-renders never replay them. */
@@ -279,6 +280,7 @@ export function render() {
   afterRender();
 }
 export function afterRender() {
+  touch();
   selectMenu.close();
   enhanceSelects();
   placePop();

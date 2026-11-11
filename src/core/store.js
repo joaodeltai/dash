@@ -99,6 +99,11 @@ let persist = () => {};
 export function setPersist(fn) {
   persist = fn;
 }
+/* Called after every render: view settings can be created while rendering (a first visit to a project view),
+   without any action calling save(). Scheduling is debounced and a cycle with nothing to send costs no request. */
+export function touch() {
+  persist();
+}
 /* Called after every mutation: schedules a sync of whatever changed in S.data / S.prefs / S.views. */
 export function save() {
   // Keep the in-memory workspace consistent right away (derived attachments, no dangling references),

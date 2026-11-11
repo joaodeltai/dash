@@ -28,7 +28,7 @@ Este repositório não declara licença própria: nenhuma foi inventada. Este te
 - JavaScript puro (módulos ES) e CSS, empacotados pelo Vite. Sem framework de UI.
 - Supabase: Postgres com Row Level Security, Auth, Storage e Realtime. O navegador fala direto com o Supabase; toda a autorização está no banco.
 - Vercel: hospedagem estática.
-- ESLint, Prettier e Vitest (testes unitários e de integração).
+- ESLint, Prettier, Vitest (testes unitários e de integração) e Playwright (testes de ponta a ponta).
 
 ## Início rápido (local)
 
@@ -52,6 +52,7 @@ E-mails de confirmação ficam no Mailpit local: `http://127.0.0.1:55324`. O pas
 | `npm run preview`          | Serve o build de produção localmente.                                                                |
 | `npm test`                 | Testes unitários (sem rede e sem Supabase).                                                          |
 | `npm run test:integration` | Testes de integração contra o Supabase local (RLS, triggers, RPCs, Storage). Exige `supabase start`. |
+| `npm run test:e2e`         | Testes de ponta a ponta no navegador (Playwright) contra o Supabase local. Exige `supabase start`.   |
 | `npm run lint`             | ESLint.                                                                                              |
 | `npm run format`           | Prettier, reescrevendo os arquivos.                                                                  |
 | `npm run format:check`     | Prettier, só conferindo (usado no CI).                                                               |

@@ -405,6 +405,9 @@ export function refresh({ force = false } = {}) {
   if (pulling) return pulling;
   const busy = () => sync.isRunning() || sync.pending() > 0;
   const later = () => {
+    // Whatever is pending must be on its way to the database, or the refresh would wait forever
+    // (state can change during a render, without any action calling save()).
+    sync.schedule();
     clearTimeout(pullAgain);
     pullAgain = setTimeout(() => void refresh(), 2500);
   };
@@ -524,6 +527,7 @@ function unsubscribe() {
 function drainRealtime() {
   if (!sync.hasBaseline()) return (rtQueue = []);
   if (sync.isRunning() || sync.pending() > 0) {
+    sync.schedule();
     rtTimer = setTimeout(drainRealtime, 900);
     return;
   }
