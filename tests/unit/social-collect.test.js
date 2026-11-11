@@ -549,6 +549,33 @@ describe('collectAll', () => {
     for (const c of sent) expect(new Set(c.rows.map(r => Object.keys(r).sort().join(','))).size).toBe(1);
   });
 
+  it('counts what was stored before a later write is refused', async () => {
+    const items = [
+      { username: 'acme', followersCount: 1800, followsCount: 120 },
+      { username: 'acme.br', followersCount: 2500 },
+    ];
+    const db = fakeDb({ collectors: [collector('instagram', 'apify/instagram-profile-scraper', IG_MAP)], accounts: ACCOUNTS });
+    const from = db.from;
+    let writes = 0;
+    db.from = table => {
+      const q = from(table);
+      if (table === 'social_snapshots') {
+        const upsert = q.upsert;
+        q.upsert = (rows, opt) =>
+          ++writes === 2 ? { select: () => Promise.resolve({ data: null, error: { message: 'second write refused' } }) } : upsert(rows, opt);
+      }
+      return q;
+    };
+    const { runs } = await collectAll(db, ENV, fakeFetch({ 'apify~instagram-profile-scraper': items }));
+    expect(runs[0]).toMatchObject({
+      status: 'partial',
+      accounts_total: 2,
+      accounts_ok: 1,
+      snapshots_written: 1,
+      message: 'saving snapshots: second write refused',
+    });
+  });
+
   it('narrows the collection to a platform and skips disabled collectors and inactive accounts', async () => {
     const rows = collectors();
     rows[1] = { ...rows[1], enabled: false };

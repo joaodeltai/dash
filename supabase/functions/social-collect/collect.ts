@@ -155,9 +155,9 @@ export async function collectPlatform(
       for (const part of chunk(group, 200)) {
         await must(db.from('social_snapshots').upsert(part, { onConflict: 'account_id,date' }).select('id'), 'saving snapshots');
         run.snapshots_written += part.length;
+        run.accounts_ok = run.snapshots_written; // one snapshot per account: counted as soon as it is stored
       }
     }
-    run.accounts_ok = snapshots.length;
     for (const part of chunk(posts, 200)) {
       await must(db.from('social_posts').upsert(part, { onConflict: 'account_id,external_id' }).select('id'), 'saving posts');
       run.posts_written += part.length;
