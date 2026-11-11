@@ -162,14 +162,12 @@ export function paletteItems() {
   if (sc === 'all' || sc === 'comments')
     groups.push({
       name: 'Comments',
-      items: r.comments
-        .slice(0, lim)
-        .map(c => ({
-          html: authorAv(c.by, 'sm', false),
-          name: c.text,
-          sub: 'on ' + (task(c.task)?.title || 'a task'),
-          run: () => A.openTask({ dataset: { id: c.task } }),
-        })),
+      items: r.comments.slice(0, lim).map(c => ({
+        html: authorAv(c.by, 'sm', false),
+        name: c.text,
+        sub: 'on ' + (task(c.task)?.title || 'a task'),
+        run: () => A.openTask({ dataset: { id: c.task } }),
+      })),
     });
   const out = groups.filter(g => g.items.length);
   out.push({
