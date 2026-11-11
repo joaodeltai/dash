@@ -253,6 +253,8 @@ O app é um site estático: a Vercel roda `npm run build` e serve a pasta `dist/
 
 ### 4.1. Criar e ligar o projeto
 
+> **Situação em 11/11/2026: este passo já foi feito.** O projeto `dash` existe na conta Vercel `deltaitecnologia-gmailcom's projects`, está conectado ao repositório `joaodeltai/dash` (branch de produção `main`; as demais geram preview) e a pasta local já está ligada a ele (`.vercel/`, fora do Git). O endereço de produção é `https://dash-liart-ten.vercel.app` e, enquanto as variáveis do passo 4.2 não forem definidas, ele mostra a tela "Connect a database". Falta só o passo 4.2 e um novo deploy (4.3). O texto abaixo fica como referência para recriar o projeto do zero.
+
 Pelo painel: em [vercel.com/new](https://vercel.com/new), importe o repositório `joaodeltai/dash` do GitHub. A Vercel detecta Vite e usa as configurações de `vercel.json`. Em Git nas configurações do projeto, a **Production Branch** deve ser `main`; qualquer outra branch gera preview ([documentação](https://vercel.com/docs/git#production-branch)).
 
 Pelo terminal, alternativa:

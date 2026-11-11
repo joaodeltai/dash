@@ -17,7 +17,7 @@ Este repositório não declara licença própria: nenhuma foi inventada. Este te
 ## Funcionalidades
 
 - Cadastro e login com e-mail e senha, confirmação de e-mail e recuperação de senha. Login com Google, Microsoft e Apple é opcional.
-- Vários workspaces por conta, com convites por e-mail e papéis (`owner`, `admin`, `member`, `guest`).
+- Vários workspaces por conta, com papéis (`owner`, `admin`, `member`, `guest`) e convites pelo endereço de e-mail: a pessoa entra no workspace ao criar conta com aquele endereço (o app não envia mensagem de convite).
 - Projetos (abertos ou privados, com permissão por pessoa), tarefas, subtarefas, dependências, comentários com menções e reações.
 - Views de projeto: quadro, lista, tabela, calendário, linha do tempo, arquivos e visão geral.
 - Envio de arquivos para o Storage do Supabase, anexos de tarefa, notificações, atividade, favoritos e visões salvas.
