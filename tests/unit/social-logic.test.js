@@ -175,6 +175,14 @@ describe('CSV', () => {
     const hinted = read('sep=;\ndata;seguidores\n01/11/2026;7\nruim;1\n', { defaultAccountId: 'ig' });
     expect(hinted.rows).toEqual([{ account_id: 'ig', date: '2026-11-01', followers: 7 }]);
     expect(hinted.errors).toEqual([{ line: 4, code: 'bad-date', value: 'ruim' }]);
+    expect(read('sep=\t\ndate\tfollowers\n2026-11-01\t7\n', { defaultAccountId: 'ig' }).rows).toEqual([{ account_id: 'ig', date: '2026-11-01', followers: 7 }]);
+    expect(read('sep=,\r\ndate,followers\r\n2026-11-01,7\r\n', { defaultAccountId: 'ig' }).rows).toEqual([
+      { account_id: 'ig', date: '2026-11-01', followers: 7 },
+    ]);
+    expect(read('\n sep=; \ndate;followers\n2026-11-01;7', { defaultAccountId: 'ig' }).rows).toEqual([{ account_id: 'ig', date: '2026-11-01', followers: 7 }]);
+    // the announcement alone, or a header alone, is an empty import, not an error about the wrong line
+    expect(read('sep=;\n', { defaultAccountId: 'ig' }).errors).toEqual([{ line: 1, code: 'empty' }]);
+    expect(read('date,followers\n', { defaultAccountId: 'ig' })).toMatchObject({ rows: [], errors: [], total: 0 });
     // a first line with only one column still reads: there is no separator to find
     expect(read('\ndate\n2026-11-01\n', { defaultAccountId: 'ig' }).errors.map(e => e.code)).toEqual(['no-number-column']);
   });

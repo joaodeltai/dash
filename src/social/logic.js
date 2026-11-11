@@ -88,7 +88,7 @@ export function parseCsv(text) {
   const firstLine = src.split(/\r\n|\r|\n/).find(l => l.trim() !== '') || ''; // the first line that has something in it
   const count = ch => firstLine.split(ch).length - 1;
   // spreadsheet programs may announce the separator in a first line of their own: sep=;
-  const hint = firstLine.trim().match(/^sep=(.)$/i);
+  const hint = firstLine.match(/^\s*sep=(.)[ ]*$/i); // not trimmed first: the announced separator may be a tab
   const sep = hint ? hint[1] : count('\t') > count(';') && count('\t') > count(',') ? '\t' : count(';') > count(',') ? ';' : ',';
   const found = [];
   let row = [],
