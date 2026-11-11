@@ -4,6 +4,7 @@
 import { esc } from '../core/utils.js';
 import { logAct, task } from '../core/store.js';
 import { mutate, toast } from '../ui/toast.js';
+import { tr } from '../core/i18n.js';
 import { A, confirmDlg, deleteTasks } from './actions.js';
 
 A.restoreTask = el => {
@@ -15,17 +16,17 @@ A.restoreTask = el => {
       logAct('restored', t);
     })
   )
-    toast(`Restored “${t.title}”`, { action: 'Open', onAction: () => A.openTask({ dataset: { id: t.id } }) });
+    toast(tr('Restored “{title}”', { title: t.title }), { action: tr('Open'), onAction: () => A.openTask({ dataset: { id: t.id } }) });
 };
 A.purgeTask = el => {
   const t = task(el.dataset.id);
   confirmDlg({
-    title: 'Delete task permanently?',
-    body: `<b>${esc(t.title)}</b>, its subtasks, comments, and attachments will be deleted for everyone. This can't be undone.`,
-    ok: 'Delete permanently',
+    title: tr('Delete task permanently?'),
+    body: tr("<b>{title}</b>, its subtasks, comments, and attachments will be deleted for everyone. This can't be undone.", { title: esc(t.title) }),
+    ok: tr('Delete permanently'),
     danger: true,
     run: () => {
-      if (mutate(() => deleteTasks([t.id]))) toast(`Deleted “${t.title}”`);
+      if (mutate(() => deleteTasks([t.id]))) toast(tr('Deleted “{title}”', { title: t.title }));
     },
   });
 };

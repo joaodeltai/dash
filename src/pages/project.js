@@ -3,6 +3,7 @@
    ===================================================================== */
 import { esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
+import { tr } from '../core/i18n.js';
 import { PSTAT } from '../core/constants.js';
 import { D, S, canSee, proj, tasksOf } from '../core/store.js';
 import { avStack, empty, pIcon } from '../ui/helpers.js';
@@ -57,21 +58,21 @@ export function pageProject() {
       <div class="t">
         ${pIcon(p, 'lg', 18)}
         <h1>${esc(p.name)}</h1>
-        <button class="ibtn ibtn-sm" data-a="toggleFavProj" data-id="${p.id}" data-tip="${p.fav ? 'Remove from favorites' : 'Add to favorites'}" aria-pressed="${p.fav}" aria-label="Favorite" style="${p.fav ? 'color:var(--amber)' : ''}">${ic('star', 15)}</button>
-        <button class="pillbtn bordered" data-a="pop" data-pop="pstatus" data-id="${p.id}" aria-label="Project status" style="height:24px"><span class="pdot" style="--c:${PSTAT[p.status].c};border-radius:50%;width:7px;height:7px"></span>${PSTAT[p.status].name}${ic('chevron-down', 12)}</button>
+        <button class="ibtn ibtn-sm" data-a="toggleFavProj" data-id="${p.id}" data-tip="${p.fav ? tr('Remove from favorites') : tr('Add to favorites')}" aria-pressed="${p.fav}" aria-label="${tr('Favorite')}" style="${p.fav ? 'color:var(--amber)' : ''}">${ic('star', 15)}</button>
+        <button class="pillbtn bordered" data-a="pop" data-pop="pstatus" data-id="${p.id}" aria-label="${tr('Project status')}" style="height:24px"><span class="pdot" style="--c:${PSTAT[p.status].c};border-radius:50%;width:7px;height:7px"></span>${tr(PSTAT[p.status].name)}${ic('chevron-down', 12)}</button>
         <span class="sp"></span>
         <div class="row" style="gap:4px">
-          <button class="row" data-a="share" data-id="${p.id}" aria-label="Members" style="gap:0">${avStack(p.members, 5, 'md')}</button>
-          <button class="ibtn ibtn-sm" data-a="share" data-id="${p.id}" data-tip="Add member" aria-label="Add member">${ic('user-plus', 15)}</button>
-          <button class="btn btn-secondary btn-sm hide-m" data-a="share" data-id="${p.id}">${ic('share-2', 13)}Share</button>
-          <button class="ibtn ibtn-sm" data-a="editProject" data-id="${p.id}" data-tip="Project settings" aria-label="Project settings">${ic('settings', 15)}</button>
-          <button class="ibtn ibtn-sm" data-a="ctxBtn" data-ctx="project" data-id="${p.id}" aria-label="More">${ic('ellipsis', 15)}</button>
+          <button class="row" data-a="share" data-id="${p.id}" aria-label="${tr('Members')}" style="gap:0">${avStack(p.members, 5, 'md')}</button>
+          <button class="ibtn ibtn-sm" data-a="share" data-id="${p.id}" data-tip="${tr('Add member')}" aria-label="${tr('Add member')}">${ic('user-plus', 15)}</button>
+          <button class="btn btn-secondary btn-sm hide-m" data-a="share" data-id="${p.id}">${ic('share-2', 13)}${tr('Share')}</button>
+          <button class="ibtn ibtn-sm" data-a="editProject" data-id="${p.id}" data-tip="${tr('Project settings')}" aria-label="${tr('Project settings')}">${ic('settings', 15)}</button>
+          <button class="ibtn ibtn-sm" data-a="ctxBtn" data-ctx="project" data-id="${p.id}" aria-label="${tr('More')}">${ic('ellipsis', 15)}</button>
         </div>
       </div>
-      <nav class="tabs" aria-label="Project views">
-        ${PTABS.map(([k, n, i]) => `<button ${tab === k ? 'aria-current="page"' : ''} class="tab ${tab === k ? 'on' : ''}" data-a="go" data-r="project" data-id="${p.id}" data-tab="${k}">${ic(i, 14)}${n}</button>`).join('')}
+      <nav class="tabs" aria-label="${tr('Project views')}">
+        ${PTABS.map(([k, n, i]) => `<button ${tab === k ? 'aria-current="page"' : ''} class="tab ${tab === k ? 'on' : ''}" data-a="go" data-r="project" data-id="${p.id}" data-tab="${k}">${ic(i, 14)}${tr(n)}</button>`).join('')}
         ${views.map(v => `<button ${tab === 'v:' + v.id ? 'aria-current="page"' : ''} class="tab ${tab === 'v:' + v.id ? 'on' : ''}" data-a="go" data-r="project" data-id="${p.id}" data-tab="v:${v.id}" data-ctx="savedview" data-vid="${v.id}">${ic('list-filter', 14)}${esc(v.name)}</button>`).join('')}
-        <button class="tab" data-a="saveView" data-id="${p.id}" data-tip="Save current filters as a view" aria-label="Save view">${ic('plus', 14)}</button>
+        <button class="tab" data-a="saveView" data-id="${p.id}" data-tip="${tr('Save current filters as a view')}" aria-label="${tr('Save view')}">${ic('plus', 14)}</button>
       </nav>
     </div>
     <div class="pbody${S.ui.fx.tab ? ' fx-tab' : ''}">${body}</div>
@@ -79,19 +80,19 @@ export function pageProject() {
 }
 export function taskViewBody(type, ts, key, p) {
   const v = viewOf(key);
-  const addBtn = `<button class="btn btn-primary btn-sm" data-a="newTask" data-project="${p.id}">${ic('plus', 13)}New task</button>`;
+  const addBtn = `<button class="btn btn-primary btn-sm" data-a="newTask" data-project="${p.id}">${ic('plus', 13)}${tr('New task')}</button>`;
   const noTasks = !tasksOf(p.id).length;
   const emptyAll = empty(
     'list-checks',
-    'No tasks here',
-    'Add a task to get things moving.',
-    `<button class="btn btn-primary btn-sm" data-a="newTask" data-project="${p.id}">${ic('plus', 14)}Add task</button>`,
+    tr('No tasks here'),
+    tr('Add a task to get things moving.'),
+    `<button class="btn btn-primary btn-sm" data-a="newTask" data-project="${p.id}">${ic('plus', 14)}${tr('Add task')}</button>`,
   );
   const emptyFilter = empty(
     'search-x',
-    'No results found',
-    'No tasks match these filters.',
-    `<button class="btn btn-secondary btn-sm" data-a="clearFilters" data-key="${key}">Clear filters</button>`,
+    tr('No results found'),
+    tr('No tasks match these filters.'),
+    `<button class="btn btn-secondary btn-sm" data-a="clearFilters" data-key="${key}">${tr('Clear filters')}</button>`,
   );
   if (type === 'board') return viewToolbar(key, { group: false, right: addBtn }) + (noTasks ? emptyAll : boardHtml(ts, key, { project: p.id }));
   if (type === 'list')

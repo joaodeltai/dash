@@ -1,6 +1,7 @@
 /* ---------- SEARCH RESULTS ---------- */
 import { ago, esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
+import { tr } from '../core/i18n.js';
 import { D, S, allTasks, canSee, pColor, proj, task, visibleProjects } from '../core/store.js';
 import { FT, authorAv, authorName, av, empty, hl, pIcon, pStatus, stIcon } from '../ui/helpers.js';
 
@@ -23,12 +24,12 @@ export function pageSearch() {
   const r = searchAll(q);
   const cat = S.ui.searchCat;
   const cats = [
-    ['all', 'All'],
-    ['tasks', 'Tasks'],
-    ['projects', 'Projects'],
-    ['people', 'People'],
-    ['files', 'Files'],
-    ['comments', 'Comments'],
+    ['all', tr('All')],
+    ['tasks', tr('Tasks')],
+    ['projects', tr('Projects')],
+    ['people', tr('People')],
+    ['files', tr('Files')],
+    ['comments', tr('Comments')],
   ];
   const total = Object.values(r).reduce((a, b) => a + b.length, 0);
   const sec = (k, title, html) =>
@@ -36,17 +37,17 @@ export function pageSearch() {
       ? `<section style="margin-bottom:22px"><div class="eyebrow" style="margin-bottom:6px">${title} · ${r[k].length}</div><div class="panel" style="overflow:hidden">${html}</div></section>`
       : '';
   return `<div class="page" style="max-width:860px">
-    <div class="inwrap" style="margin-bottom:14px">${ic('search', 16)}<input class="input input-lg" id="search-page-q" data-in="searchQ" placeholder="Search tasks, projects, people, files, and comments" value="${esc(q)}" style="padding-left:34px;font-size:15px" aria-label="Search"></div>
+    <div class="inwrap" style="margin-bottom:14px">${ic('search', 16)}<input class="input input-lg" id="search-page-q" data-in="searchQ" placeholder="${tr('Search tasks, projects, people, files, and comments')}" value="${esc(q)}" style="padding-left:34px;font-size:15px" aria-label="${tr('Search')}"></div>
     <div class="tabs" style="margin-bottom:18px">${cats.map(([k, n]) => `<button class="tab ${cat === k ? 'on' : ''}" data-a="set" data-k="searchCat" data-v="${k}">${n}<span class="cnt">${k === 'all' ? total : r[k].length}</span></button>`).join('')}</div>
     ${
       !q
-        ? `<div class="row" style="gap:6px;flex-wrap:wrap"><span class="faint" style="font-size:12.5px">Recent:</span>${D()
+        ? `<div class="row" style="gap:6px;flex-wrap:wrap"><span class="faint" style="font-size:12.5px">${tr('Recent:')}</span>${D()
             .recentSearches.map(s => `<button class="badge" data-a="setSearch" data-q="${esc(s)}">${ic('history', 11)}${esc(s)}</button>`)
             .join('')}</div>`
         : total
           ? sec(
               'tasks',
-              'Tasks',
+              tr('Tasks'),
               r.tasks
                 .map(
                   t =>
@@ -56,7 +57,7 @@ export function pageSearch() {
             ) +
             sec(
               'projects',
-              'Projects',
+              tr('Projects'),
               r.projects
                 .map(
                   p =>
@@ -66,7 +67,7 @@ export function pageSearch() {
             ) +
             sec(
               'people',
-              'People',
+              tr('People'),
               r.people
                 .map(
                   m =>
@@ -76,7 +77,7 @@ export function pageSearch() {
             ) +
             sec(
               'files',
-              'Files',
+              tr('Files'),
               r.files
                 .map(
                   f =>
@@ -86,15 +87,15 @@ export function pageSearch() {
             ) +
             sec(
               'comments',
-              'Comments',
+              tr('Comments'),
               r.comments
                 .map(
                   c =>
-                    `<div class="mini" style="align-items:flex-start;padding-top:10px;padding-bottom:10px" data-a="openTask" data-id="${c.task}">${authorAv(c.by, 'sm')}<div class="grow" style="min-width:0"><div style="font-size:12px" class="muted"><b style="color:var(--text);font-weight:500">${esc(authorName(c.by))}</b> on ${esc(task(c.task)?.title)} · ${ago(c.at)}</div><div style="font-size:13px">${hl(c.text, q)}</div></div></div>`,
+                    `<div class="mini" style="align-items:flex-start;padding-top:10px;padding-bottom:10px" data-a="openTask" data-id="${c.task}">${authorAv(c.by, 'sm')}<div class="grow" style="min-width:0"><div style="font-size:12px" class="muted">${tr('{who} on {task}', { who: `<b style="color:var(--text);font-weight:500">${esc(authorName(c.by))}</b>`, task: esc(task(c.task)?.title) })} · ${ago(c.at)}</div><div style="font-size:13px">${hl(c.text, q)}</div></div></div>`,
                 )
                 .join(''),
             )
-          : `<div class="panel">${empty('search-x', 'No results found', `Nothing matches “${q}”. Check the spelling or try a broader term.`, `<button class="btn btn-secondary btn-sm" data-a="setSearch" data-q="">Clear search</button>`)}</div>`
+          : `<div class="panel">${empty('search-x', tr('No results found'), tr('Nothing matches “{q}”. Check the spelling or try a broader term.', { q }), `<button class="btn btn-secondary btn-sm" data-a="setSearch" data-q="">${tr('Clear search')}</button>`)}</div>`
     }
   </div>`;
 }

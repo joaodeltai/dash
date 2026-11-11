@@ -1,11 +1,13 @@
 /* ---------- theme ---------- */
 import { setDateFormat } from './utils.js';
+import { setLang } from './i18n.js';
 import { S } from './store.js';
 
 export function applyPrefs() {
   const r = document.documentElement,
     p = S.prefs;
   setDateFormat(p.dateFmt);
+  setLang(p.lang);
   if (p.theme === 'system') r.removeAttribute('data-theme');
   else r.setAttribute('data-theme', p.theme);
   if (p.accent === 'indigo') r.removeAttribute('data-accent');

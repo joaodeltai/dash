@@ -14,6 +14,7 @@ import { viewOf } from '../shell/view-engine.js';
 import { TEMPLATES, closeModal, openModal } from '../overlays/modals.js';
 import { closePop, openPop, tgt } from '../overlays/popovers.js';
 import { strengthMeter } from '../pages/settings.js';
+import { tr, trn } from '../core/i18n.js';
 
 export const EMAIL_RE = /^\S+@\S+\.\S+$/;
 export const A = {},
@@ -35,7 +36,7 @@ export function createTask(f) {
   const t = Object.assign(
     {
       project: p.id,
-      title: 'Untitled',
+      title: tr('Untitled'),
       status: 'todo',
       assignee: null,
       priority: 'none',
@@ -110,12 +111,12 @@ export function applyPatch(t, patch) {
           attachments: [],
         });
         delete n.prevStatus;
-        msgs.push(`Next “${t.title}” scheduled for ${fmtDate(nd)}`);
+        msgs.push(tr('Next “{title}” scheduled for {date}', { title: t.title, date: fmtDate(nd) }));
       }
     } else if (k === 'assignee') logAct('assigned', t, nv ? `to ${mem(nv)?.name}` : '(unassigned)');
     else if (k === 'priority') logAct('changed priority of', t, `to ${PR[nv].name}`);
-    else if (k === 'due') logAct('changed due date of', t, nv ? `to ${fmtDate(nv)}` : '(cleared)');
-    else if (k === 'start') logAct('changed start date of', t, nv ? `to ${fmtDate(nv)}` : '(cleared)');
+    else if (k === 'due') logAct('changed due date of', t, nv ? `to ${nv}` : '(cleared)');
+    else if (k === 'start') logAct('changed start date of', t, nv ? `to ${nv}` : '(cleared)');
     else if (k === 'project') {
       const p = proj(nv);
       t.key = nextKey(p);
@@ -157,12 +158,12 @@ export function restore(snap) {
   save();
   render();
 }
-export async function copy(text, msg = 'Link copied') {
+export async function copy(text, msg = tr('Link copied')) {
   try {
     await navigator.clipboard.writeText(text);
     toast(msg);
   } catch {
-    toast("Copy isn't available here — " + text, { kind: 'info', ms: 6000 });
+    toast(tr("Copy isn't available here — {text}", { text }), { kind: 'info', ms: 6000 });
   }
 }
 export function loadingBtn(id, ms, fn) {
@@ -264,7 +265,7 @@ A.toggleDark = () => {
   save();
   S.ui.palette = null;
   render();
-  toast(effectiveDark() ? 'Dark mode on' : 'Light mode on', { kind: 'info', ms: 1800 });
+  toast(effectiveDark() ? tr('Dark mode on') : tr('Light mode on'), { kind: 'info', ms: 1800 });
 };
 A.setPref = el => {
   S.prefs[el.dataset.k] = el.dataset.v;
@@ -308,7 +309,7 @@ A.popPick = el => {
       logAct(
         k === 'assignee' ? 'assigned a subtask on' : 'set a subtask due date on',
         t,
-        k === 'assignee' ? (v ? `to ${mem(v)?.name || FORMER_MEMBER}` : '(unassigned)') : v ? fmtDate(v) : '(cleared)',
+        k === 'assignee' ? (v ? `to ${mem(v)?.name || FORMER_MEMBER}` : '(unassigned)') : v ? v : '(cleared)',
       );
     });
     return;
@@ -329,7 +330,7 @@ A.popPick = el => {
     });
     S.ui.pop = null;
     render();
-    toast(`${pr.name} marked ${PSTAT[v].name}`);
+    toast(tr('{name} marked {status}', { name: pr.name, status: tr(PSTAT[v].name) }));
     return;
   }
   if (p.type === 'role') {
@@ -343,7 +344,7 @@ A.popPick = el => {
     });
     S.ui.pop = null;
     render();
-    toast(`${m.name} is now ${v === 'Admin' ? 'an' : 'a'} ${v}`);
+    toast(v === 'Admin' ? tr('{name} is now an {role}', { name: m.name, role: tr(v) }) : tr('{name} is now a {role}', { name: m.name, role: tr(v) }));
     return;
   }
   const field = { status: 'status', priority: 'priority', assignee: 'assignee', project: 'project', recur: 'recur', estimate: 'estimate', date: p.field }[
@@ -402,7 +403,7 @@ A.openTask = el => {
   const id = el.dataset.id;
   if (!task(id)) return;
   if (!canSee(proj(task(id).project))) {
-    toast("You don't have access to that task", { kind: 'err' });
+    toast(tr("You don't have access to that task"), { kind: 'err' });
     return;
   }
   if (!S.ui.drawer || !document.activeElement?.closest?.('.drawer')) S.ui.drawerOpener = el.isConnected ? focusKey(el) : S.ui.drawerOpener;
@@ -442,7 +443,12 @@ A._projMove = (el, d) => {
   S.ui.pop = null;
   save();
   render();
-  toast(`Moved ${proj(el.dataset.id)?.name || 'project'} ${d < 0 ? 'up' : 'down'}`, { ms: 1600 });
+  toast(
+    d < 0
+      ? tr('Moved {name} up', { name: proj(el.dataset.id)?.name || tr('project') })
+      : tr('Moved {name} down', { name: proj(el.dataset.id)?.name || tr('project') }),
+    { ms: 1600 },
+  );
 };
 A.toggleDrawerFull = () => {
   S.ui.drawerFull = !S.ui.drawerFull;
@@ -454,7 +460,8 @@ A.toggleDone = el => {
   const wasDone = t.status === 'done';
   S.ui.pop = null;
   updateTask(t.id, { status: wasDone ? (t.prevStatus && t.prevStatus !== 'done' ? t.prevStatus : 'todo') : 'done' });
-  if (!wasDone && !S.ui.offline) toast(`Completed “${t.title}”`, { action: 'Undo', onAction: () => updateTask(t.id, { status: t.prevStatus || 'todo' }) });
+  if (!wasDone && !S.ui.offline)
+    toast(tr('Completed “{title}”|task', { title: t.title }), { action: tr('Undo'), onAction: () => updateTask(t.id, { status: t.prevStatus || 'todo' }) });
 };
 A.toggleFavTask = el => {
   const t = task(el.dataset.id);
@@ -463,7 +470,7 @@ A.toggleFavTask = el => {
     t.fav = !t.fav;
   });
   S.ui.pop = null;
-  toast(t.fav ? 'Added to favorites' : 'Removed from favorites', { ms: 1800 });
+  toast(t.fav ? tr('Added to favorites') : tr('Removed from favorites'), { ms: 1800 });
   render();
 };
 A.toggleFavProj = el => {
@@ -474,7 +481,7 @@ A.toggleFavProj = el => {
   });
   S.ui.pop = null;
   render();
-  toast(p.fav ? `Added ${p.name} to favorites` : 'Removed from favorites', { ms: 1800 });
+  toast(p.fav ? tr('Added {name} to favorites', { name: p.name }) : tr('Removed from favorites'), { ms: 1800 });
 };
 A.copyLink = el => {
   S.ui.pop = null;
@@ -486,11 +493,11 @@ A.copyLink = el => {
   if (d.id && task(d.id)) copy(`${base}#/task/${encodeURIComponent(d.id)}`);
   else if (pid && proj(pid)) copy(base + routeHash('project', { id: pid }));
 };
-A.copyText = el => copy(el.dataset.text, 'Copied to clipboard');
+A.copyText = el => copy(el.dataset.text, tr('Copied to clipboard'));
 A.copyEmail = el => {
   S.ui.pop = null;
   render();
-  if (mem(el.dataset.id)) copy(mem(el.dataset.id).email, 'Email copied');
+  if (mem(el.dataset.id)) copy(mem(el.dataset.id).email, tr('Email copied'));
 };
 A.dupTask = el => {
   const t = task(el.dataset.id);
@@ -498,9 +505,9 @@ A.dupTask = el => {
   if (!t) return;
   let n;
   mutate(() => {
-    n = createTask(cloneTaskFields(t, { title: t.title + ' (copy)' }));
+    n = createTask(cloneTaskFields(t, { title: tr('{title} (copy)', { title: t.title }) }));
   });
-  if (n) toast('Task duplicated', { action: 'Open', onAction: () => A.openTask({ dataset: { id: n.id } }) });
+  if (n) toast(tr('Task duplicated'), { action: tr('Open'), onAction: () => A.openTask({ dataset: { id: n.id } }) });
 };
 A.archiveTask = el => {
   const t = task(el.dataset.id);
@@ -513,7 +520,7 @@ A.archiveTask = el => {
     t.archivedAt = Date.now();
     logAct('archived', t);
   });
-  toast(`Archived “${t.title}”`, { action: 'Undo', onAction: () => restore(snap) });
+  toast(tr('Archived “{title}”|task', { title: t.title }), { action: tr('Undo'), onAction: () => restore(snap) });
 };
 export function deleteTasks(ids) {
   const set = new Set(ids);
@@ -529,13 +536,26 @@ A.delTask = el => {
   if (!t) return;
   const run = () => {
     const snap = snapshot();
-    if (mutate(() => deleteTasks([t.id]))) toast(`Deleted “${t.title}”`, { action: 'Undo', onAction: () => restore(snap) });
+    if (mutate(() => deleteTasks([t.id]))) toast(tr('Deleted “{title}”|task', { title: t.title }), { action: tr('Undo'), onAction: () => restore(snap) });
   };
   if (S.prefs.confirmDel === false && !el.dataset.demo) return run();
   confirmDlg({
-    title: 'Delete task?',
-    body: `<b>${esc(t.title)}</b>${t.subtasks.length ? `, its ${t.subtasks.length} subtasks,` : ''} and ${commentsOf(t.id).length} comment${commentsOf(t.id).length === 1 ? '' : 's'} will be permanently deleted.`,
-    ok: 'Delete task',
+    title: tr('Delete task?'),
+    body: t.subtasks.length
+      ? trn(
+          '{title}, its {n} subtasks, and {comments} will be permanently deleted.|one',
+          '{title}, its {n} subtasks, and {comments} will be permanently deleted.',
+          t.subtasks.length,
+          {
+            title: `<b>${esc(t.title)}</b>`,
+            comments: trn('{n} comment', '{n} comments', commentsOf(t.id).length),
+          },
+        )
+      : tr('{title} and {comments} will be permanently deleted.', {
+          title: `<b>${esc(t.title)}</b>`,
+          comments: trn('{n} comment', '{n} comments', commentsOf(t.id).length),
+        }),
+    ok: tr('Delete task'),
     danger: true,
     run,
   });
@@ -570,8 +590,8 @@ A.editTask = el => {
 export function noProjectYet() {
   S.ui.pop = null;
   S.ui.palette = null;
-  if (canCreate()) toast('Create a project first, then add tasks to it.', { kind: 'info', action: 'New project', onAction: () => A.newProject() });
-  else toast("You haven't been added to a project yet. Ask an admin to add you to one.", { kind: 'info', ms: 6000 });
+  if (canCreate()) toast(tr('Create a project first, then add tasks to it.'), { kind: 'info', action: tr('New project'), onAction: () => A.newProject() });
+  else toast(tr("You haven't been added to a project yet. Ask an admin to add you to one."), { kind: 'info', ms: 6000 });
   render();
 }
 A.newTask = el => {
@@ -655,7 +675,7 @@ A.submitTask = () => {
   f.title = title;
   f.desc = $('#f-desc')?.value ?? f.desc;
   if (!title) {
-    S.ui.errors.title = 'Give the task a name';
+    S.ui.errors.title = tr('Give the task a name');
     render();
     $('#f-title')?.focus();
     return;
@@ -698,7 +718,7 @@ A.submitTask = () => {
       return;
     S.ui.modals.pop();
     render();
-    toast('Changes saved', snap ? { action: 'Undo', onAction: () => restore(snap) } : {});
+    toast(tr('Changes saved'), snap ? { action: tr('Undo'), onAction: () => restore(snap) } : {});
     handleFiles(queued, { project: t.project, task: t.id });
     return;
   }
@@ -718,14 +738,17 @@ A.submitTask = () => {
     Object.assign(f, { title: '', desc: '', subtasks: [], files: [], existing: [], removed: [] });
     render();
     setTimeout(() => $('#f-title')?.focus(), 0);
-    toast(`Created ${t.key}`, { ms: 2000 });
+    toast(tr('Created {key}', { key: t.key }), { ms: 2000 });
     handleFiles(queued, { project: t.project, task: t.id });
     return;
   }
   S.ui.modals.pop();
   fxSet({ added: t.id });
   render();
-  toast(`Created ${t.key} in ${proj(t.project).name}`, { action: 'Open', onAction: () => A.openTask({ dataset: { id: t.id } }) });
+  toast(tr('Created {key} in {project}', { key: t.key, project: proj(t.project).name }), {
+    action: tr('Open'),
+    onAction: () => A.openTask({ dataset: { id: t.id } }),
+  });
   handleFiles(queued, { project: t.project, task: t.id });
 };
 
@@ -869,8 +892,8 @@ function acceptFiles(list) {
   if (big.length)
     toast(
       big.length === 1
-        ? `${big[0].name} is larger than ${MAX_MB} MB, so it wasn't uploaded.`
-        : `${big.length} files are larger than ${MAX_MB} MB and weren't uploaded.`,
+        ? tr("{name} is larger than {mb} MB, so it wasn't uploaded.", { name: big[0].name, mb: MAX_MB })
+        : tr("{n} files are larger than {mb} MB and weren't uploaded.", { n: big.length, mb: MAX_MB }),
       {
         kind: 'err',
         ms: 6000,
@@ -882,7 +905,7 @@ const busy = (el, fn) => {
   el?.classList?.add('is-loading');
   return fn().finally(() => el?.classList?.remove('is-loading'));
 };
-const noContent = () => toast('This file has no stored content.', { kind: 'err' });
+const noContent = () => toast(tr('This file has no stored content.'), { kind: 'err' });
 
 A.rmAttach = el => {
   const t = task(el.dataset.id);
@@ -895,7 +918,7 @@ A.rmAttach = el => {
       logAct('removed a file from', t);
     })
   )
-    toast(`Removed ${f.name}`, { action: 'Undo', onAction: () => restore(snap) });
+    toast(tr('Removed {name}|file', { name: f.name }), { action: tr('Undo'), onAction: () => restore(snap) });
 };
 A.filePreview = el => {
   const f = fileById(el.dataset.aid);
@@ -925,7 +948,7 @@ A.downloadFile = el => {
       a.click();
       a.remove();
     } catch (e) {
-      errToast(e, `Couldn't download ${f.name}.`);
+      errToast(e, tr("Couldn't download {name}.", { name: f.name }));
     }
   });
 };
@@ -935,14 +958,14 @@ A.openFile = el => {
   if (!f?.path) return noContent();
   /* open the tab synchronously so the pop-up blocker allows it, then point it at the signed URL */
   const w = window.open('about:blank', '_blank');
-  if (!w) return toast('Your browser blocked the new tab. Allow pop-ups for this site and try again.', { kind: 'err', ms: 6000 });
+  if (!w) return toast(tr('Your browser blocked the new tab. Allow pop-ups for this site and try again.'), { kind: 'err', ms: 6000 });
   w.opener = null;
   return busy(el, async () => {
     try {
       w.location.href = await fileUrl(f.path);
     } catch (e) {
       w.close();
-      errToast(e, `Couldn't open ${f.name}.`);
+      errToast(e, tr("Couldn't open {name}.", { name: f.name }));
     }
   });
 };
@@ -952,9 +975,9 @@ A.copyFileLink = el => {
   if (!f?.path) return noContent();
   return busy(el, async () => {
     try {
-      await copy(await fileUrl(f.path), 'Temporary link copied. It stops working in 1 hour.');
+      await copy(await fileUrl(f.path), tr('Temporary link copied. It stops working in 1 hour.'));
     } catch (e) {
-      errToast(e, "Couldn't create a link for this file.");
+      errToast(e, tr("Couldn't create a link for this file."));
     }
   });
 };
@@ -964,11 +987,11 @@ export function handleFiles(files, ctx) {
   const list = acceptFiles([...(files || [])]);
   if (!list.length) return;
   if (!ctx.project || !proj(ctx.project)) {
-    toast('Pick a project before uploading files.', { kind: 'err' });
+    toast(tr('Pick a project before uploading files.'), { kind: 'err' });
     return;
   }
   if (S.ui.offline) {
-    toast("Upload failed: you're offline.", { kind: 'err', action: 'Try again', onAction: () => handleFiles(list, ctx) });
+    toast(tr("Upload failed: you're offline."), { kind: 'err', action: tr('Try again'), onAction: () => handleFiles(list, ctx) });
     return;
   }
   S.ui.uploads = S.ui.uploads || [];
@@ -996,19 +1019,24 @@ export function handleFiles(files, ctx) {
           /* the project or task was deleted (or the workspace changed) while the file was uploading */
           void discardUploads([rec.path]);
           render();
-          toast(`${rec.name} wasn't added because its ${rec.task && proj(rec.project) ? 'task' : 'project'} is gone.`, { kind: 'err', ms: 6000 });
+          toast(
+            rec.task && proj(rec.project)
+              ? tr("{name} wasn't added because its task is gone.", { name: rec.name })
+              : tr("{name} wasn't added because its project is gone.", { name: rec.name }),
+            { kind: 'err', ms: 6000 },
+          );
           return;
         }
         D().files.unshift(rec);
         if (t) logAct('added a file to', t, rec.name);
         save();
         render();
-        toast(`Uploaded ${rec.name}`);
+        toast(tr('Uploaded {name}', { name: rec.name }));
       },
       err => {
         done();
         render();
-        errToast(err, `Couldn't upload ${file.name}.`);
+        errToast(err, tr("Couldn't upload {name}.", { name: file.name }));
       },
     );
   });
@@ -1079,7 +1107,7 @@ A.postComment = el => {
       S.ui.drawerTab = 'comments';
     })
   ) {
-    if (S.ui.route === 'inbox') toast('Reply posted');
+    if (S.ui.route === 'inbox') toast(tr('Reply posted'));
   }
 };
 A.delComment = el => {
@@ -1088,7 +1116,7 @@ A.delComment = el => {
   mutate(() => {
     D().comments = D().comments.filter(x => x !== c);
   });
-  toast('Comment deleted', { action: 'Undo', onAction: () => restore(snap) });
+  toast(tr('Comment deleted'), { action: tr('Undo'), onAction: () => restore(snap) });
 };
 A.react = el => {
   const c = D().comments.find(x => x.id === el.dataset.id);
@@ -1110,7 +1138,7 @@ document.addEventListener('mousedown', e => {
   if (cmd === 'createLink') {
     const s = String(getSelection());
     if (/^https?:\/\//.test(s)) document.execCommand('createLink', false, s);
-    else toast('Select a URL starting with https:// to turn it into a link', { kind: 'info' });
+    else toast(tr('Select a URL starting with https:// to turn it into a link'), { kind: 'info' });
   } else document.execCommand(cmd, false, arg ? `<${arg}>` : null);
   const ed = $('#d-desc');
   if (ed) {
@@ -1169,18 +1197,19 @@ A.bulkSet = el => {
   let v = el.dataset.v || null;
   const ids = [...S.ui.sel];
   S.ui.pop = null;
-  if (mutate(() => ids.forEach(id => applyPatch(task(id), { [f]: v })))) toast(`Updated ${ids.length} task${ids.length > 1 ? 's' : ''}`);
+  if (mutate(() => ids.forEach(id => applyPatch(task(id), { [f]: v })))) toast(trn('Updated {n} task', 'Updated {n} tasks', ids.length));
 };
 A.bulkDelete = () => {
   const ids = [...S.ui.sel];
   confirmDlg({
-    title: `Delete ${ids.length} task${ids.length > 1 ? 's' : ''}?`,
-    body: 'The selected tasks, their subtasks, and comments will be permanently deleted.',
-    ok: `Delete ${ids.length} task${ids.length > 1 ? 's' : ''}`,
+    title: trn('Delete {n} task?', 'Delete {n} tasks?', ids.length),
+    body: tr('The selected tasks, their subtasks, and comments will be permanently deleted.'),
+    ok: trn('Delete {n} task', 'Delete {n} tasks', ids.length),
     danger: true,
     run: () => {
       const snap = snapshot();
-      if (mutate(() => deleteTasks(ids))) toast(`Deleted ${ids.length} tasks`, { action: 'Undo', onAction: () => restore(snap) });
+      if (mutate(() => deleteTasks(ids)))
+        toast(trn('Deleted {n} tasks|one', 'Deleted {n} tasks', ids.length), { action: tr('Undo'), onAction: () => restore(snap) });
     },
   });
 };
@@ -1297,22 +1326,22 @@ A.saveView = el => {
 };
 A.saveViewSubmit = () => {
   const m = S.ui.modals[S.ui.modals.length - 1];
-  const name = $('#sv-name').value.trim() || 'Untitled view';
+  const name = $('#sv-name').value.trim() || tr('Untitled view');
   const type = $('#sv-type').value;
   const sv = { id: uid('v'), project: m.pid, name, type, filters: JSON.parse(JSON.stringify(viewOf('p:' + m.pid).filters)) };
   D().savedViews.push(sv);
   save();
   S.ui.modals.pop();
   go('project', { id: m.pid, tab: 'v:' + sv.id }, { tab: true });
-  toast(`Saved view “${name}”`);
+  toast(tr('Saved view “{name}”', { name }));
 };
 A.renameView = el => {
   const v = D().savedViews.find(x => x.id === el.dataset.id);
   S.ui.pop = null;
   openModal({
     type: 'prompt',
-    title: 'Rename view',
-    label: 'View name',
+    title: tr('Rename view'),
+    label: tr('View name'),
     value: v.name,
     run: val => {
       if (val) {
@@ -1329,7 +1358,7 @@ A.delView = el => {
   save();
   if (S.ui.params.tab === 'v:' + v.id) go('project', { id: v.project, tab: 'list' }, { tab: true });
   else render();
-  toast(`Deleted view “${v.name}”`);
+  toast(tr('Deleted view “{name}”', { name: v.name }));
 };
 
 /* board column menu */
@@ -1361,7 +1390,7 @@ A.colDoneAll = el => {
   }
   const snap = snapshot();
   if (mutate(() => ts.forEach(t => applyPatch(t, { status: 'done' }))))
-    toast(`Marked ${ts.length} tasks as done`, { action: 'Undo', onAction: () => restore(snap) });
+    toast(trn('Marked {n} tasks as done|one', 'Marked {n} tasks as done', ts.length), { action: tr('Undo'), onAction: () => restore(snap) });
 };
 A.colArchive = () => {
   const ts = colTasks(S.ui.pop.key, 'done');
@@ -1375,7 +1404,7 @@ A.colArchive = () => {
       }),
     )
   )
-    toast(`Archived ${ts.length} completed tasks`, { action: 'Undo', onAction: () => restore(snap) });
+    toast(trn('Archived {n} completed tasks|one', 'Archived {n} completed tasks', ts.length), { action: tr('Undo'), onAction: () => restore(snap) });
 };
 A.colSortPrio = el => {
   const ts = colTasks(S.ui.pop.key, el.dataset.id).sort((a, b) => PR[b.priority].w - PR[a.priority].w);
@@ -1422,7 +1451,7 @@ A.newProject = () => {
   if (!canCreate()) {
     S.ui.pop = null;
     S.ui.palette = null;
-    toast("Guests can't create projects. Ask a workspace admin to add you to one.", { kind: 'info' });
+    toast(tr("Guests can't create projects. Ask a workspace admin to add you to one."), { kind: 'info' });
     render();
     return;
   }
@@ -1494,7 +1523,7 @@ export function createProject(f, tmplId) {
     start: dOff(0),
     fav: false,
     members: [...new Set([D().me, f.lead])],
-    desc: f.desc || 'No description yet.',
+    desc: f.desc || tr('No description yet.'),
     milestones: [],
     last: 0,
   };
@@ -1505,7 +1534,7 @@ export function createProject(f, tmplId) {
   (tm?.tasks || []).forEach((title, i) =>
     createTask({
       project: p.id,
-      title,
+      title: tr(title),
       status: i === 0 ? 'todo' : 'backlog',
       assignee: i === 0 ? D().me : null,
       priority: i === 0 ? 'high' : 'medium',
@@ -1524,9 +1553,9 @@ function readMilestones(f) {
     const name = (x.name || '').trim();
     const date = x.date || '';
     if (!name && !date) return;
-    if (!name) errs[i] = 'Give the milestone a name';
-    else if (name.length > 200) errs[i] = 'Names can be up to 200 characters';
-    else if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parse(date).getTime())) errs[i] = 'Pick a date for the milestone';
+    if (!name) errs[i] = tr('Give the milestone a name');
+    else if (name.length > 200) errs[i] = tr('Names can be up to 200 characters');
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parse(date).getTime())) errs[i] = tr('Pick a date for the milestone');
     else out.push({ name, date });
   });
   const bad = Object.keys(errs);
@@ -1545,7 +1574,7 @@ A.submitProject = () => {
   f.name = ($('#p-name')?.value || '').trim();
   f.desc = $('#p-desc')?.value || '';
   if (!f.name) {
-    S.ui.errors.pname = 'Give the project a name';
+    S.ui.errors.pname = tr('Give the project a name');
     render();
     $('#p-name')?.focus();
     return;
@@ -1571,7 +1600,7 @@ A.submitProject = () => {
     ) {
       S.ui.modals.pop();
       render();
-      toast('Project updated');
+      toast(tr('Project updated'));
     }
     return;
   }
@@ -1585,20 +1614,24 @@ A.submitProject = () => {
     return;
   S.ui.modals.pop();
   go('project', { id: p.id, tab: f.tmpl === 'blank' ? 'overview' : S.prefs.defaultTab || 'board' });
-  toast(`Created ${p.name}${tasksOf(p.id).length ? ` with ${tasksOf(p.id).length} starter tasks` : ''}`);
+  toast(
+    tasksOf(p.id).length
+      ? tr('Created {name} with {n} starter tasks', { name: p.name, n: tasksOf(p.id).length })
+      : tr('Created {name}|project', { name: p.name }),
+  );
 };
 A.dupProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
   if (!p) return;
   if (!canCreate()) {
-    toast("Guests can't create projects.", { kind: 'info' });
+    toast(tr("Guests can't create projects."), { kind: 'info' });
     render();
     return;
   }
   let n;
   mutate(() => {
-    n = createProject({ ...p, name: p.name + ' copy' }, 'blank');
+    n = createProject({ ...p, name: tr('{name} copy', { name: p.name }) }, 'blank');
     // Same audience as the original: a copy of a private project stays private to the same people.
     n.private = !!p.private;
     n.members = [...new Set([...n.members, ...p.members])];
@@ -1612,15 +1645,15 @@ A.dupProject = el => {
     // Dependencies point at the copies, not at the original project's tasks.
     copies.forEach(([t, c]) => (c.deps = (t.deps || []).map(d => ids.get(d)).filter(Boolean)));
   });
-  if (n) toast(`Duplicated ${p.name}`, { action: 'Open', onAction: () => go('project', { id: n.id }) });
+  if (n) toast(tr('Duplicated {name}', { name: p.name }), { action: tr('Open'), onAction: () => go('project', { id: n.id }) });
 };
 A.archiveProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
   confirmDlg({
-    title: `Archive ${p.name}?`,
-    body: 'The project will be hidden from the sidebar and project lists. Tasks, files, and comments are kept, and you can restore it from Archive.',
-    ok: 'Archive project',
+    title: tr('Archive {name}?', { name: p.name }),
+    body: tr('The project will be hidden from the sidebar and project lists. Tasks, files, and comments are kept, and you can restore it from Archive.'),
+    ok: tr('Archive project'),
     icon: 'archive',
     run: () => {
       const snap = snapshot();
@@ -1631,7 +1664,7 @@ A.archiveProject = el => {
         })
       ) {
         if (S.ui.route === 'project' && S.ui.params.id === p.id) go('projects');
-        toast(`Archived ${p.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        toast(tr('Archived {name}|project', { name: p.name }), { action: tr('Undo'), onAction: () => restore(snap) });
       }
     },
   });
@@ -1642,16 +1675,18 @@ A.restoreProject = el => {
     p.archived = false;
     p.archivedAt = null;
   });
-  toast(`Restored ${p.name}`);
+  toast(tr('Restored {name}|project', { name: p.name }));
 };
 A.delProject = el => {
   const p = proj(el.dataset.id);
   S.ui.pop = null;
   const n = tasksOf(p.id).length;
   confirmDlg({
-    title: `Delete ${p.name}?`,
-    body: `This permanently deletes the project and its <b>${n} task${n === 1 ? '' : 's'}</b>, files, and comments for everyone. This can't be undone.`,
-    ok: 'Delete project',
+    title: tr('Delete {name}?', { name: p.name }),
+    body: tr("This permanently deletes the project and its {tasks}, files, and comments for everyone. This can't be undone.", {
+      tasks: `<b>${trn('{n} task', '{n} tasks', n)}</b>`,
+    }),
+    ok: tr('Delete project'),
     danger: true,
     typeName: p.name,
     run: () => {
@@ -1669,7 +1704,7 @@ A.delProject = el => {
         })
       ) {
         if (S.ui.route === 'project' && S.ui.params.id === p.id) go('projects');
-        toast(`Deleted ${p.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        toast(tr('Deleted {name}|project', { name: p.name }), { action: tr('Undo'), onAction: () => restore(snap) });
       }
     },
   });
@@ -1678,7 +1713,12 @@ A.requestAccess = el => {
   const p = proj(el.dataset.id);
   const lead = mem(p?.lead);
   // There is no access-request flow: say who can grant access instead of pretending someone was notified.
-  toast(`Ask ${lead ? lead.name : 'the project lead or a workspace admin'} to add you to ${p ? p.name : 'this project'}.`, { kind: 'info', ms: 6000 });
+  toast(
+    lead
+      ? tr('Ask {name} to add you to {project}.', { name: lead.name, project: p ? p.name : tr('this project') })
+      : tr('Ask the project lead or a workspace admin to add you to {project}.', { project: p ? p.name : tr('this project') }),
+    { kind: 'info', ms: 6000 },
+  );
 };
 
 /* sharing & invites
@@ -1690,7 +1730,13 @@ const inviteName = e =>
     .replace(/[._-]+/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase());
 const byEmail = e => D().members.find(x => (x.email || '').toLowerCase() === e.toLowerCase());
-const copyLinkAction = { action: 'Copy sign-up link', onAction: () => A.copyInviteLink(), ms: 7000 };
+const copyLinkAction = {
+  get action() {
+    return tr('Copy sign-up link');
+  },
+  onAction: () => A.copyInviteLink(),
+  ms: 7000,
+};
 A.share = el => {
   const id = el.dataset.id || curProjectId();
   if (!proj(id)) return;
@@ -1712,7 +1758,7 @@ A.shareAdd = el => {
     });
   S.ui.shareQ = '';
   render();
-  toast(`${m.name} now has access to ${p.name}`);
+  toast(tr('{name} now has access to {project}', { name: m.name, project: p.name }));
 };
 A.shareInvite = () => {
   const m = S.ui.modals[S.ui.modals.length - 1];
@@ -1734,15 +1780,15 @@ A.shareInvite = () => {
       });
     S.ui.shareQ = '';
     render();
-    toast(`Shared with ${ex.name}`);
+    toast(tr('Shared with {name}', { name: ex.name }));
     return;
   }
   if (!canCreate()) {
-    toast('Guests can only share with people already in the workspace.', { kind: 'err' });
+    toast(tr('Guests can only share with people already in the workspace.'), { kind: 'err' });
     return;
   }
   if (!EMAIL_RE.test(v)) {
-    toast('Enter a valid email address, like name@company.com', { kind: 'err' });
+    toast(tr('Enter a valid email address, like name@company.com'), { kind: 'err' });
     return;
   }
   const email = v.toLowerCase();
@@ -1755,7 +1801,7 @@ A.shareInvite = () => {
   });
   S.ui.shareQ = '';
   render();
-  toast(`${email} was invited as a guest. No email is sent: they get access when they sign up with this address.`, copyLinkAction);
+  toast(tr('{email} was invited as a guest. No email is sent: they get access when they sign up with this address.', { email }), copyLinkAction);
 };
 IN.sharePerm = el => {
   const p = proj(el.dataset.id);
@@ -1767,13 +1813,13 @@ IN.sharePerm = el => {
     mutate(() => {
       p.members = p.members.filter(x => x !== mid);
     });
-    toast(`Removed ${name}`, { action: 'Undo', onAction: () => restore(snap) });
+    toast(tr('Removed {name}|member', { name }), { action: tr('Undo'), onAction: () => restore(snap) });
   } else {
     mutate(() => {
       p.perms = p.perms || {};
       p.perms[mid] = el.value;
     });
-    toast(`${name}: ${el.value}`, { ms: 1800 });
+    toast(`${name}: ${tr(el.value)}`, { ms: 1800 });
   }
 };
 IN.shareAccess = el => {
@@ -1786,13 +1832,13 @@ IN.shareAccess = el => {
     // Whoever makes a project private keeps access to it.
     if (priv && !p.members.includes(D().me)) p.members.push(D().me);
   });
-  toast(priv ? `${p.name} is now private` : `Everyone at ${D().ws.name} can open ${p.name}`, { ms: 2200 });
+  toast(priv ? tr('{name} is now private', { name: p.name }) : tr('Everyone at {ws} can open {name}', { ws: D().ws.name, name: p.name }), { ms: 2200 });
 };
 A.invite = () => {
   S.ui.pop = null;
   S.ui.palette = null;
   if (!canCreate()) {
-    toast("Guests can't invite people. Ask a workspace admin.", { kind: 'info' });
+    toast(tr("Guests can't invite people. Ask a workspace admin."), { kind: 'info' });
     render();
     return;
   }
@@ -1815,18 +1861,21 @@ A.submitInvite = () => {
   ];
   const bad = list.filter(e => !EMAIL_RE.test(e));
   if (!list.length) {
-    S.ui.errors.invite = 'Enter at least one email address';
+    S.ui.errors.invite = tr('Enter at least one email address');
     render();
     return;
   }
   if (bad.length) {
-    S.ui.errors.invite = `${bad[0]} isn't a valid email address`;
+    S.ui.errors.invite = tr("{email} isn't a valid email address", { email: bad[0] });
     render();
     return;
   }
   const dup = list.map(byEmail).find(Boolean);
   if (dup) {
-    S.ui.errors.invite = dup.status === 'invited' ? `${dup.email} has already been invited` : `${dup.email} is already a member of ${D().ws.name}`;
+    S.ui.errors.invite =
+      dup.status === 'invited'
+        ? tr('{email} has already been invited', { email: dup.email })
+        : tr('{email} is already a member of {ws}', { email: dup.email, ws: D().ws.name });
     render();
     return;
   }
@@ -1843,7 +1892,9 @@ A.submitInvite = () => {
   S.ui.inviteDraft = '';
   render();
   toast(
-    `${list.length === 1 ? list[0] + ' is' : list.length + ' people are'} invited. No email is sent: share the sign-up link so they can join.`,
+    list.length === 1
+      ? tr('{email} is invited. No email is sent: share the sign-up link so they can join.', { email: list[0] })
+      : tr('{n} people are invited. No email is sent: share the sign-up link so they can join.', { n: list.length }),
     copyLinkAction,
   );
 };
@@ -1857,18 +1908,18 @@ A.removeMember = el => {
   S.ui.pop = null;
   if (!m) return;
   if (!canManage(m)) {
-    toast(m.id === D().me ? "You can't remove yourself." : 'Only owners and admins can remove members.', { kind: 'info' });
+    toast(m.id === D().me ? tr("You can't remove yourself.") : tr('Only owners and admins can remove members.'), { kind: 'info' });
     render();
     return;
   }
   const invited = m.status === 'invited';
   const n = allTasks().filter(t => t.assignee === m.id && t.status !== 'done').length;
   confirmDlg({
-    title: invited ? `Cancel invitation for ${m.email}?` : `Remove ${m.name}?`,
+    title: invited ? tr('Cancel invitation for {email}?', { email: m.email }) : tr('Remove {name}?', { name: m.name }),
     body: invited
-      ? `${esc(m.email)} won't join ${esc(D().ws.name)} when they sign up.${n ? ` <b>${n} open task${n > 1 ? 's' : ''}</b> assigned to them will become unassigned.` : ''}`
-      : `${esc(m.name)} will lose access to ${esc(D().ws.name)} immediately.${n ? ` Their <b>${n} open task${n > 1 ? 's' : ''}</b> will become unassigned.` : ''}`,
-    ok: invited ? 'Cancel invitation' : 'Remove member',
+      ? `${tr("{email} won't join {ws} when they sign up.", { email: esc(m.email), ws: esc(D().ws.name) })}${n ? ' ' + trn('{tasks} assigned to them will become unassigned.|one', '{tasks} assigned to them will become unassigned.', n, { tasks: `<b>${trn('{n} open task', '{n} open tasks', n)}</b>` }) : ''}`
+      : `${tr('{name} will lose access to {ws} immediately.', { name: esc(m.name), ws: esc(D().ws.name) })}${n ? ' ' + trn('Their {tasks} will become unassigned.|one', 'Their {tasks} will become unassigned.', n, { tasks: `<b>${trn('{n} open task', '{n} open tasks', n)}</b>` }) : ''}`,
+    ok: invited ? tr('Cancel invitation') : tr('Remove member'),
     danger: true,
     icon: 'user-minus',
     run: () => {
@@ -1883,7 +1934,10 @@ A.removeMember = el => {
         })
       ) {
         if (S.ui.route === 'member') go('members');
-        toast(invited ? `Invitation for ${m.email} cancelled` : `Removed ${m.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        toast(invited ? tr('Invitation for {email} cancelled', { email: m.email }) : tr('Removed {name}|member', { name: m.name }), {
+          action: tr('Undo'),
+          onAction: () => restore(snap),
+        });
       }
     },
   });
@@ -1916,8 +1970,8 @@ A.renameFile = el => {
   if (!f) return;
   openModal({
     type: 'prompt',
-    title: 'Rename file',
-    label: 'File name',
+    title: tr('Rename file'),
+    label: tr('File name'),
     value: f.name,
     run: v => {
       const cur = fileById(f.id);
@@ -1935,9 +1989,9 @@ A.dupFile = async el => {
   S.ui.pop = null;
   if (!f) return;
   if (!f.path) return noContent();
-  if (S.ui.offline) return toast("Couldn't duplicate the file: you're offline.", { kind: 'err' });
-  const name = /\.[^.]+$/.test(f.name) ? f.name.replace(/(\.[^.]+)$/, ' copy$1') : f.name + ' copy';
-  toast(`Duplicating ${f.name}…`, { kind: 'info', ms: 1500 });
+  if (S.ui.offline) return toast(tr("Couldn't duplicate the file: you're offline."), { kind: 'err' });
+  const name = /\.[^.]+$/.test(f.name) ? f.name.replace(/(\.[^.]+)$/, tr(' copy|file name suffix') + '$1') : f.name + tr(' copy|file name suffix');
+  toast(tr('Duplicating {name}…', { name: f.name }), { kind: 'info', ms: 1500 });
   try {
     const { id, path } = await copyStoredFile(f.path, f.project, name);
     const added = () => {
@@ -1947,10 +2001,10 @@ A.dupFile = async el => {
         D().files.splice(i < 0 ? 0 : i + 1, 0, { ...f, id, path, name, type: fileType(name), at: Date.now(), by: D().me });
       });
     };
-    if (added()) toast('File duplicated');
+    if (added()) toast(tr('File duplicated'));
     else void discardUploads([path]);
   } catch (e) {
-    errToast(e, `Couldn't duplicate ${f.name}.`);
+    errToast(e, tr("Couldn't duplicate {name}.", { name: f.name }));
   }
 };
 A.delFile = el => {
@@ -1958,9 +2012,11 @@ A.delFile = el => {
   S.ui.pop = null;
   if (!f) return;
   confirmDlg({
-    title: 'Delete file?',
-    body: `<b>${esc(f.name)}</b> will be removed from the project${f.task ? ' and its task' : ''}.`,
-    ok: 'Delete file',
+    title: tr('Delete file?'),
+    body: f.task
+      ? tr('{name} will be removed from the project and its task.', { name: `<b>${esc(f.name)}</b>` })
+      : tr('{name} will be removed from the project.', { name: `<b>${esc(f.name)}</b>` }),
+    ok: tr('Delete file'),
     danger: true,
     run: () => {
       const snap = snapshot();
@@ -1969,7 +2025,7 @@ A.delFile = el => {
           removeFiles([f.id]);
         })
       )
-        toast(`Deleted ${f.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        toast(tr('Deleted {name}|file', { name: f.name }), { action: tr('Undo'), onAction: () => restore(snap) });
     },
   });
 };
@@ -1995,7 +2051,7 @@ A.markAllRead = () => {
   D().notifs.forEach(x => (x.read = true));
   save();
   render();
-  if (n) toast("You're all caught up.");
+  if (n) toast(tr("You're all caught up."));
 };
 A.toggleUnreadOnly = () => {
   S.ui.inboxUnread = !S.ui.inboxUnread;
@@ -2065,25 +2121,25 @@ A.shortcuts = () => {
 A.toastInfo = el => toast(el.dataset.msg, { kind: 'info' });
 A.demoToast = el => {
   const v = el.dataset.v;
-  if (v === 'err') toast("Your changes couldn't be saved.", { kind: 'err', action: 'Try again', onAction: () => toast('Saved') });
+  if (v === 'err') toast(tr("Your changes couldn't be saved."), { kind: 'err', action: tr('Try again'), onAction: () => toast(tr('Saved')) });
   else if (v === 'retry') {
-    toast('Retrying…', { kind: 'info', ms: 1200 });
-    setTimeout(() => toast('Loaded successfully'), 1300);
-  } else toast('Moved a task to Review', { action: 'Undo', onAction: () => toast('Undone', { kind: 'info' }) });
+    toast(tr('Retrying…'), { kind: 'info', ms: 1200 });
+    setTimeout(() => toast(tr('Loaded successfully')), 1300);
+  } else toast(tr('Moved a task to Review'), { action: tr('Undo'), onAction: () => toast(tr('Undone'), { kind: 'info' }) });
 };
 A.demoConfirm = () =>
   confirmDlg({
-    title: 'Archive this project?',
-    body: 'The project will be hidden from the sidebar. You can restore it any time.',
-    ok: 'Archive project',
+    title: tr('Archive this project?'),
+    body: tr('The project will be hidden from the sidebar. You can restore it any time.'),
+    ok: tr('Archive project'),
     icon: 'archive',
-    run: () => toast('This was a preview — nothing was archived', { kind: 'info' }),
+    run: () => toast(tr('This was a preview — nothing was archived'), { kind: 'info' }),
   });
 A.demoLoad = el => {
   el.classList.add('is-loading');
   setTimeout(() => {
     el.classList.remove('is-loading');
-    toast('Loaded');
+    toast(tr('Loaded'));
   }, 1400);
 };
 A.reloadPage = () => {
@@ -2131,14 +2187,14 @@ IN.prefToggle = el => {
 IN.npToggle = el => {
   D().notifPrefs[el.dataset.k] = el.checked;
   save();
-  toast('Notification preferences saved', { ms: 1500 });
+  toast(tr('Notification preferences saved'), { ms: 1500 });
 };
 IN.prefSel = el => {
   const k = el.dataset.k;
   S.prefs[k] = k === 'weekStart' ? +el.value : el.value;
   save();
   render();
-  toast('Preference saved', { ms: 1500 });
+  toast(tr('Preference saved'), { ms: 1500 });
 };
 A.wsColor = el => {
   if (!['Owner', 'Admin'].includes(me().role)) return;
@@ -2160,7 +2216,7 @@ A.avColor = el => {
 A.saveProfile = () => {
   const n = $('#pf-name').value.trim();
   if (!n) {
-    S.ui.errors.pname2 = 'Enter your name';
+    S.ui.errors.pname2 = tr('Enter your name');
     render();
     return;
   }
@@ -2174,7 +2230,7 @@ A.saveProfile = () => {
       me().title = tt;
     })
   )
-    toast('Profile updated');
+    toast(tr('Profile updated'));
 };
 IN.pwStrength = el => {
   S.ui.pwNew = el.value;

@@ -5,7 +5,8 @@
 import { AUTH_PROVIDERS, MAX_FILE_BYTES, SUPABASE_KEY, SUPABASE_URL, ctx, isConfigured, sb, urlIntent } from './supabase.js';
 import { TABLE, emptyData, flatten, fmtBytes, hydrate, keyOf, newId, stable } from './mappers.js';
 import { createSync } from './sync.js';
-import { DEFAULT_PREFS, S, cachePrefs, setPersist, task } from '../core/store.js';
+import { S, cachePrefs, mergePrefs, setPersist, task } from '../core/store.js';
+import { tr } from '../core/i18n.js';
 import { fileType } from '../ui/helpers.js';
 import { toast } from '../ui/toast.js';
 import { openUrl, render } from '../shell/render.js';
@@ -24,7 +25,7 @@ export class BackendError extends Error {
   }
 }
 const fail = (error, status) =>
-  new BackendError(error?.message || 'Something went wrong', { code: error?.code, status, kind: !status || status >= 500 ? 'network' : 'rejected' });
+  new BackendError(error?.message || tr('Something went wrong'), { code: error?.code, status, kind: !status || status >= 500 ? 'network' : 'rejected' });
 const unwrap = res => {
   if (res.error) throw fail(res.error, res.status);
   return res.data;
@@ -46,31 +47,49 @@ export const sync = createSync({
     } else if (status === 'idle' && wasOffline && navigator.onLine !== false) {
       S.ui.offline = false;
       render();
-      toast('Back online. All changes are saved.');
+      toast(tr('Back online. All changes are saved.'));
     }
     paintSyncState();
   },
   onRejected(err) {
     console.error('[sync] change rejected', err.table, err.op, err.code, err.message);
-    toast(`Couldn't save your last change. ${friendly(err)}`, { kind: 'err', ms: 7000 });
+    toast(tr("Couldn't save your last change. {reason}", { reason: friendly(err) }), { kind: 'err', ms: 7000 });
     void refresh({ force: true });
   },
   onAuthLost() {
-    toast('Your session expired. Sign in again to keep working.', { kind: 'err', ms: 7000 });
+    toast(tr('Your session expired. Sign in again to keep working.'), { kind: 'err', ms: 7000 });
     void sb.auth.signOut({ scope: 'local' });
   },
   onDeletedFiles(paths) {
     void sb.storage.from('files').remove(paths);
   },
+  /* The database assigns each task's key (unique in the workspace). The key shown right after creating a task is
+     provisional; this puts the real one in its place, usually the same. */
+  onServerValues(table, rows) {
+    if (table !== 'tasks') return;
+    let changed = false;
+    for (const row of rows) {
+      const t = task(row.id);
+      if (!t || !row.key) continue;
+      const n = Number(/-(\d+)$/.exec(row.key)?.[1]);
+      const p = S.data.projects.find(x => x.id === t.project);
+      if (p && Number.isInteger(n) && n > (p.seq || 0)) p.seq = n;
+      if (t.key !== row.key) {
+        t.key = row.key;
+        changed = true;
+      }
+    }
+    if (changed) render();
+  },
 });
 
 export function friendly(err) {
   if (err?.code === '42501' || err?.code === 'NOT_UPDATED' || /row-level security|permission denied|not allowed/i.test(err?.message || ''))
-    return "You don't have permission to do that.";
-  if (err?.code === '23505') return err.table === 'members' ? 'That person is already in this workspace.' : 'That already exists.';
-  if (err?.code === '23503') return 'Something it depends on no longer exists.';
-  if (err?.kind === 'network') return 'Check your connection and try again.';
-  return err?.message || 'Please try again.';
+    return tr("You don't have permission to do that.");
+  if (err?.code === '23505') return err.table === 'members' ? tr('That person is already in this workspace.') : tr('That already exists.');
+  if (err?.code === '23503') return tr('Something it depends on no longer exists.');
+  if (err?.kind === 'network') return tr('Check your connection and try again.');
+  return err?.message || tr('Please try again.');
 }
 
 /* A tiny "Saving…" hint without a full re-render. */
@@ -79,7 +98,7 @@ function paintSyncState() {
   if (!el) return;
   const s = S.ui.sync;
   el.dataset.s = s || 'idle';
-  el.textContent = s === 'saving' ? 'Saving…' : s === 'offline' ? 'Offline' : s === 'error' ? 'Not saved' : '';
+  el.textContent = s === 'saving' ? tr('Saving…') : s === 'offline' ? tr('Offline') : s === 'error' ? tr('Not saved') : '';
 }
 
 const stateOf = () => ({ data: S.data, prefs: S.prefs, views: S.views });
@@ -292,7 +311,7 @@ async function fetchRows(wsId) {
       .then(unwrap)
       .then(w => {
         // no row = the workspace is gone or this account was removed from it
-        if (!w) throw new BackendError('You are no longer a member of this workspace.', { code: 'NOT_A_MEMBER', kind: 'rejected' });
+        if (!w) throw new BackendError(tr('You are no longer a member of this workspace.'), { code: 'NOT_A_MEMBER', kind: 'rejected' });
         return w;
       }),
     sb.from('profiles').select('*').eq('id', ctx.userId).single().then(unwrap),
@@ -313,7 +332,7 @@ async function fetchRows(wsId) {
     fetchAll('project_favorites', inWs),
   ]);
   const mine = members.find(m => m.user_id === ctx.userId && m.status === 'active');
-  if (!mine) throw new BackendError('You are no longer a member of this workspace.', { code: 'NOT_A_MEMBER', kind: 'rejected' });
+  if (!mine) throw new BackendError(tr('You are no longer a member of this workspace.'), { code: 'NOT_A_MEMBER', kind: 'rejected' });
   const member_state = unwrap(await sb.from('member_state').select('*').eq('member_id', mine.id).maybeSingle());
   if (!member_state)
     unwrap(await sb.from('member_state').upsert({ member_id: mine.id, workspace_id: wsId, state: {} }, { onConflict: 'member_id', ignoreDuplicates: true }));
@@ -352,7 +371,8 @@ function applyRows({ mine, rows }, wsId) {
   if (meRow) meRow.last = 0;
   S.data = data;
   S.views = views;
-  S.prefs = { ...DEFAULT_PREFS, ...(rows.profile.prefs || {}), name: mine.name, title: mine.title || '' };
+  // a profile that never chose a language keeps the one this browser is already using
+  S.prefs = { ...mergePrefs(rows.profile.prefs, S.prefs.lang), name: mine.name, title: mine.title || '' };
   cachePrefs();
   sync.setBaseline(flatten(stateOf(), ctx));
   if (S.ui.drawer && !task(S.ui.drawer)) S.ui.drawer = null;
@@ -426,7 +446,7 @@ export function refresh({ force = false } = {}) {
       renderWhenSafe();
     } catch (err) {
       if (err?.code === 'NOT_A_MEMBER') {
-        toast('You no longer have access to this workspace.', { kind: 'err', ms: 7000 });
+        toast(tr('You no longer have access to this workspace.'), { kind: 'err', ms: 7000 });
         await reenter();
       } else if (force) console.error('[refresh]', err);
     } finally {
@@ -571,10 +591,10 @@ export async function signIn(email, password) {
   if (error) {
     if (/email not confirmed/i.test(error.message)) {
       pendingCredentials = { email, password };
-      throw new BackendError('Confirm your email address before signing in.', { code: 'EMAIL_NOT_CONFIRMED', kind: 'rejected' });
+      throw new BackendError(tr('Confirm your email address before signing in.'), { code: 'EMAIL_NOT_CONFIRMED', kind: 'rejected' });
     }
     if (/invalid login credentials/i.test(error.message))
-      throw new BackendError('Incorrect email or password.', { code: 'INVALID_CREDENTIALS', kind: 'rejected' });
+      throw new BackendError(tr('Incorrect email or password.'), { code: 'INVALID_CREDENTIALS', kind: 'rejected' });
     throw authFail(error);
   }
   pendingCredentials = null;
@@ -585,12 +605,12 @@ export async function signUp(name, email, password) {
   const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: redirectTo() } });
   if (error) {
     if (error.code === 'user_already_exists' || /already registered/i.test(error.message || ''))
-      throw new BackendError('An account with this email already exists. Sign in instead.', { code: 'USER_EXISTS', kind: 'rejected' });
+      throw new BackendError(tr('An account with this email already exists. Sign in instead.'), { code: 'USER_EXISTS', kind: 'rejected' });
     throw authFail(error);
   }
   // With email confirmation on, Supabase answers a sign-up for an existing address with an empty identity list.
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
-    throw new BackendError('An account with this email already exists. Sign in instead.', { code: 'USER_EXISTS', kind: 'rejected' });
+    throw new BackendError(tr('An account with this email already exists. Sign in instead.'), { code: 'USER_EXISTS', kind: 'rejected' });
   if (data.session) {
     pendingCredentials = null;
     await enterSession(data.session);
@@ -604,7 +624,7 @@ export async function signUp(name, email, password) {
 export async function completeVerification() {
   const { data } = await sb.auth.getSession();
   if (data.session) return enterSession(data.session);
-  if (!pendingCredentials) throw new BackendError('Sign in to continue.', { code: 'NEEDS_LOGIN', kind: 'rejected' });
+  if (!pendingCredentials) throw new BackendError(tr('Sign in to continue.'), { code: 'NEEDS_LOGIN', kind: 'rejected' });
   const { email, password } = pendingCredentials;
   await signIn(email, password);
 }
@@ -628,7 +648,7 @@ export async function updatePassword(password) {
 /* Settings → Password: the current password is checked before it can be replaced. */
 export async function changePassword(current, next) {
   const { error } = await sb.auth.signInWithPassword({ email: ctx.email, password: current });
-  if (error) throw new BackendError('Your current password is incorrect.', { code: 'INVALID_CREDENTIALS', kind: 'rejected' });
+  if (error) throw new BackendError(tr('Your current password is incorrect.'), { code: 'INVALID_CREDENTIALS', kind: 'rejected' });
   await updatePassword(next);
 }
 
@@ -661,14 +681,14 @@ export async function signOutOtherSessions() {
 }
 
 function authFail(error) {
-  const msg = error?.message || 'Something went wrong';
+  const msg = error?.message || tr('Something went wrong');
   if (/rate limit|too many|only request this after/i.test(msg))
-    return new BackendError('Too many attempts. Wait a moment and try again.', { code: 'RATE_LIMIT', kind: 'rejected' });
+    return new BackendError(tr('Too many attempts. Wait a moment and try again.'), { code: 'RATE_LIMIT', kind: 'rejected' });
   if (/weak|at least \d+ characters|password should/i.test(msg)) return new BackendError(msg, { code: 'WEAK_PASSWORD', kind: 'rejected' });
   if (/different from the old password/i.test(msg))
-    return new BackendError('Choose a password you have not used before.', { code: 'SAME_PASSWORD', kind: 'rejected' });
+    return new BackendError(tr('Choose a password you have not used before.'), { code: 'SAME_PASSWORD', kind: 'rejected' });
   if (/failed to fetch|network|load failed/i.test(msg))
-    return new BackendError("Can't reach the server. Check your connection and try again.", { kind: 'network' });
+    return new BackendError(tr("Can't reach the server. Check your connection and try again."), { kind: 'network' });
   return new BackendError(msg, { code: error?.code, status: error?.status, kind: 'rejected' });
 }
 
@@ -690,7 +710,7 @@ export async function createWorkspace({ name, slug, color }) {
 export async function switchWorkspace(wsId) {
   if (wsId === ctx.wsId) return;
   await loadMemberships();
-  if (!ctx.workspaces.some(w => w.id === wsId)) throw new BackendError('You no longer have access to that workspace.', { kind: 'rejected' });
+  if (!ctx.workspaces.some(w => w.id === wsId)) throw new BackendError(tr('You no longer have access to that workspace.'), { kind: 'rejected' });
   await openWorkspace(wsId);
 }
 
@@ -703,7 +723,7 @@ export async function deleteWorkspace() {
   const res = await sb.from('workspaces').delete({ count: 'exact' }).eq('id', wsId);
   if (res.error || !res.count) {
     await openWorkspace(wsId);
-    throw res.error ? fail(res.error, res.status) : new BackendError('Only the workspace owner can delete it.', { code: '42501', kind: 'rejected' });
+    throw res.error ? fail(res.error, res.status) : new BackendError(tr('Only the workspace owner can delete it.'), { code: '42501', kind: 'rejected' });
   }
   for (let i = 0; i < paths.length; i += 100) await sb.storage.from('files').remove(paths.slice(i, i + 100));
   try {
@@ -739,14 +759,16 @@ const safeName = name =>
    opts: { project, task?, onProgress?(0..1), signal? } */
 export function uploadFile(file, { project, task: taskId = null, onProgress } = {}) {
   return new Promise((resolve, reject) => {
-    if (!ctx.wsId || !project) return reject(new BackendError('Pick a project before uploading.', { kind: 'rejected' }));
+    if (!ctx.wsId || !project) return reject(new BackendError(tr('Pick a project before uploading.'), { kind: 'rejected' }));
     if (file.size > MAX_FILE_BYTES)
-      return reject(new BackendError(`${file.name} is larger than ${fmtBytes(MAX_FILE_BYTES)}.`, { code: 'TOO_LARGE', kind: 'rejected' }));
+      return reject(
+        new BackendError(tr('{name} is larger than {size}.', { name: file.name, size: fmtBytes(MAX_FILE_BYTES) }), { code: 'TOO_LARGE', kind: 'rejected' }),
+      );
     const id = newId();
     const path = `${ctx.wsId}/${project}/${id}/${safeName(file.name)}`;
     sb.auth.getSession().then(({ data }) => {
       const token = data.session?.access_token;
-      if (!token) return reject(new BackendError('Sign in again to upload files.', { kind: 'rejected' }));
+      if (!token) return reject(new BackendError(tr('Sign in again to upload files.'), { kind: 'rejected' }));
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/files/${path.split('/').map(encodeURIComponent).join('/')}`);
       xhr.setRequestHeader('Authorization', 'Bearer ' + token);
@@ -756,7 +778,7 @@ export function uploadFile(file, { project, task: taskId = null, onProgress } = 
       xhr.upload.onprogress = e => {
         if (e.lengthComputable) onProgress?.(e.loaded / e.total);
       };
-      xhr.onerror = () => reject(new BackendError(`Couldn't upload ${file.name}. Check your connection.`, { kind: 'network' }));
+      xhr.onerror = () => reject(new BackendError(tr("Couldn't upload {name}. Check your connection.", { name: file.name }), { kind: 'network' }));
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve({
@@ -781,10 +803,17 @@ export function uploadFile(file, { project, task: taskId = null, onProgress } = 
           }
           const denied = xhr.status === 403 || /row-level security|unauthorized/i.test(msg);
           reject(
-            new BackendError(denied ? "You don't have permission to upload files to this project." : `Couldn't upload ${file.name}${msg ? ': ' + msg : '.'}`, {
-              status: xhr.status,
-              kind: xhr.status >= 500 ? 'network' : 'rejected',
-            }),
+            new BackendError(
+              denied
+                ? tr("You don't have permission to upload files to this project.")
+                : msg
+                  ? tr("Couldn't upload {name}: {reason}", { name: file.name, reason: msg })
+                  : tr("Couldn't upload {name}.", { name: file.name }),
+              {
+                status: xhr.status,
+                kind: xhr.status >= 500 ? 'network' : 'rejected',
+              },
+            ),
           );
         }
       };
@@ -795,7 +824,7 @@ export function uploadFile(file, { project, task: taskId = null, onProgress } = 
 
 /* Temporary link to a stored file. `download` forces a download with that file name instead of opening it. */
 export async function fileUrl(path, { download, expires = 3600 } = {}) {
-  if (!path) throw new BackendError('This file has no stored content.', { code: 'NO_CONTENT', kind: 'rejected' });
+  if (!path) throw new BackendError(tr('This file has no stored content.'), { code: 'NO_CONTENT', kind: 'rejected' });
   const { data, error } = await sb.storage.from('files').createSignedUrl(path, expires, download ? { download } : undefined);
   if (error) throw fail(error, error.status || 400);
   return data.signedUrl;

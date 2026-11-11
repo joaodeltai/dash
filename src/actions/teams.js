@@ -6,6 +6,7 @@ import { PCOLORS } from '../core/constants.js';
 import { D, S, mem, team, teamsList } from '../core/store.js';
 import { mutate, toast } from '../ui/toast.js';
 import { go, render } from '../shell/render.js';
+import { tr, trn } from '../core/i18n.js';
 import { openModal } from '../overlays/modals.js';
 import { A, IN, confirmDlg, restore, snapshot } from './actions.js';
 
@@ -54,13 +55,13 @@ A.submitTeam = () => {
   f.name = ($('#tm-name')?.value || '').trim();
   f.desc = ($('#tm-desc')?.value || '').trim();
   if (!f.name) {
-    S.ui.errors.tname = 'Give the team a name';
+    S.ui.errors.tname = tr('Give the team a name');
     render();
     $('#tm-name')?.focus();
     return;
   }
   if (teamsList().some(t => t.name.toLowerCase() === f.name.toLowerCase() && t.id !== m.edit)) {
-    S.ui.errors.tname = `A team called “${f.name}” already exists`;
+    S.ui.errors.tname = tr('A team called “{name}” already exists', { name: f.name });
     render();
     $('#tm-name')?.focus();
     return;
@@ -74,7 +75,7 @@ A.submitTeam = () => {
         if (x.team === t.id && !f.members.includes(x.id)) x.team = '';
       });
     } else {
-      t = { id: uid('tm'), name: f.name, desc: f.desc || 'No description yet.', icon: f.icon, c: PCOLORS[f.color] };
+      t = { id: uid('tm'), name: f.name, desc: f.desc || tr('No description yet.'), icon: f.icon, c: PCOLORS[f.color] };
       teamsList().push(t);
     }
     f.members.forEach(id => {
@@ -86,10 +87,10 @@ A.submitTeam = () => {
   S.ui.modals.pop();
   if (m.edit) {
     render();
-    toast(`Saved ${t.name}`);
+    toast(tr('Saved {name}', { name: t.name }));
   } else {
     go('team', { id: t.id });
-    toast(`Created ${t.name}`);
+    toast(tr('Created {name}', { name: t.name }));
   }
 };
 A.delTeam = el => {
@@ -98,9 +99,21 @@ A.delTeam = el => {
   const np = D().projects.filter(p => p.team === t.id).length;
   S.ui.modals.pop();
   confirmDlg({
-    title: `Delete ${t.name}?`,
-    body: `${n ? `<b>${n} member${n > 1 ? 's' : ''}</b> will have no team` : 'The team has no members'}${np ? ` and <b>${np} project${np > 1 ? 's' : ''}</b> will need a new team` : ''}. People and projects are not deleted.`,
-    ok: 'Delete team',
+    title: tr('Delete {name}?', { name: t.name }),
+    body: tr(
+      n
+        ? np
+          ? '<b>{members}</b> will have no team and <b>{projects}</b> will need a new team. People and projects are not deleted.'
+          : '<b>{members}</b> will have no team. People and projects are not deleted.'
+        : np
+          ? 'The team has no members and <b>{projects}</b> will need a new team. People and projects are not deleted.'
+          : 'The team has no members. People and projects are not deleted.',
+      {
+        members: trn('{n} member', '{n} members', n),
+        projects: trn('{n} project', '{n} projects', np),
+      },
+    ),
+    ok: tr('Delete team'),
     danger: true,
     icon: 'users',
     run: () => {
@@ -117,7 +130,7 @@ A.delTeam = el => {
         })
       ) {
         if (S.ui.route === 'team') go('teams');
-        toast(`Deleted ${t.name}`, { action: 'Undo', onAction: () => restore(snap) });
+        toast(tr('Deleted {name}', { name: t.name }), { action: tr('Undo'), onAction: () => restore(snap) });
       }
     },
   });

@@ -1,6 +1,7 @@
 /* ---------- store ---------- */
 import { TODAY, diffD, iso, parse, uid } from './utils.js';
 import { PCOLORS } from './constants.js';
+import { detectLang, isLang } from './i18n.js';
 import { emptyData, normalize } from '../data/mappers.js';
 
 /* Workspace data lives in Supabase (see src/data/backend.js). Only presentation preferences are cached in
@@ -13,7 +14,7 @@ export const DEFAULT_PREFS = {
   density: 'comfortable',
   weekStart: 1,
   dateFmt: 'MMM d',
-  lang: 'English (US)',
+  lang: detectLang(),
   tz: '',
   motion: 'system',
   home: 'home',
@@ -21,7 +22,13 @@ export const DEFAULT_PREFS = {
   name: '',
   title: '',
 };
-const LOCAL_PREFS = ['theme', 'accent', 'side', 'density', 'motion', 'dateFmt', 'weekStart'];
+const LOCAL_PREFS = ['theme', 'accent', 'side', 'density', 'motion', 'dateFmt', 'weekStart', 'lang'];
+/* Merges stored preferences over the defaults. An unknown language (older profiles stored a display name) falls back to `lang`. */
+export function mergePrefs(stored, lang = detectLang()) {
+  const p = Object.assign({}, DEFAULT_PREFS, stored || {});
+  if (!isLang(p.lang)) p.lang = isLang(lang) ? lang : detectLang();
+  return p;
+}
 export function loadCached() {
   try {
     const j = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
@@ -34,7 +41,7 @@ export function loadCached() {
 export const saved = loadCached();
 export const S = {
   data: emptyData(),
-  prefs: Object.assign({}, DEFAULT_PREFS, saved?.prefs || {}),
+  prefs: mergePrefs(saved?.prefs),
   views: {},
   ui: {
     fx: {},
@@ -151,7 +158,7 @@ export function taskProg(t) {
 
 /* ---------- activity + notification helpers ---------- */
 export function logAct(verb, t, extra = '') {
-  D().activity.unshift({ id: uid('a'), by: D().me, verb, task: t?.id || null, project: t?.project || null, at: Date.now(), extra });
+  D().activity.unshift({ id: uid('a'), by: D().me, verb, task: t?.id || null, project: t?.project || null, at: Date.now(), extra, label: t?.title || '' });
   if (t) t.updated = Date.now();
 }
 

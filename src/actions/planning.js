@@ -6,6 +6,7 @@ import { $, TODAY, fmtDate, iso, parse, uid } from '../core/utils.js';
 import { D, S, canSee, proj } from '../core/store.js';
 import { mutate, toast } from '../ui/toast.js';
 import { render } from '../shell/render.js';
+import { tr } from '../core/i18n.js';
 import { closeModal, openModal } from '../overlays/modals.js';
 import { dateVisible } from '../views/calendar.js';
 import { A, IN, KEY, curProjectId, restore, snapshot } from './actions.js';
@@ -50,11 +51,11 @@ A.submitEvent = () => {
   f.time = $('#ev-time')?.value ?? f.time;
   f.project = $('#ev-project')?.value ?? f.project;
   const er = {};
-  if (!f.title) er.etitle = 'Give the event a title';
-  else if (f.title.length > 200) er.etitle = 'Titles can be up to 200 characters';
-  if (!f.date) er.edate = 'Pick a date for the event';
-  else if (!validDate(f.date)) er.edate = 'Enter a valid date';
-  if (!validTime(f.time)) er.etime = 'Enter a valid time';
+  if (!f.title) er.etitle = tr('Give the event a title');
+  else if (f.title.length > 200) er.etitle = tr('Titles can be up to 200 characters');
+  if (!f.date) er.edate = tr('Pick a date for the event');
+  else if (!validDate(f.date)) er.edate = tr('Enter a valid date');
+  if (!validTime(f.time)) er.etime = tr('Enter a valid time');
   S.ui.errors = er;
   const bad = Object.keys(er)[0];
   if (bad) {
@@ -64,7 +65,7 @@ A.submitEvent = () => {
   }
   if (m.edit && !D().events.some(x => x.id === m.edit)) {
     closeModal();
-    toast('That event no longer exists', { kind: 'err' });
+    toast(tr('That event no longer exists'), { kind: 'err' });
     return;
   }
   const p = f.project ? proj(f.project) : null;
@@ -83,7 +84,7 @@ A.submitEvent = () => {
   S.ui.modals.pop();
   if (!dateVisible(f.date)) S.ui.calDate = f.date;
   render();
-  toast(m.edit ? 'Event updated' : `Event added on ${fmtDate(f.date)}`);
+  toast(m.edit ? tr('Event updated') : tr('Event added on {date}', { date: fmtDate(f.date) }));
 };
 A.delEvent = el => {
   const e = D().events.find(x => x.id === el.dataset.id);
@@ -97,7 +98,7 @@ A.delEvent = el => {
       D().events = D().events.filter(x => x !== e);
     })
   )
-    toast(`Deleted “${short(e.title)}”`, { action: 'Undo', onAction: () => restore(snap), ms: 5000 });
+    toast(tr('Deleted “{title}”', { title: short(e.title) }), { action: tr('Undo'), onAction: () => restore(snap), ms: 5000 });
 };
 
 /* ---------- milestone rows (project form) ---------- */

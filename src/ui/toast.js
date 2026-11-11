@@ -1,4 +1,5 @@
 /* ---------- toasts ---------- */
+import { tr } from '../core/i18n.js';
 import { $, esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { S, save } from '../core/store.js';
@@ -11,7 +12,7 @@ export function toast(msg, opt = {}) {
   el.className = 'toast';
   el.setAttribute('role', opt.kind === 'err' ? 'alert' : 'status');
   const icon = opt.kind === 'err' ? ic('circle-alert', 15, 'bad') : opt.kind === 'info' ? ic('info', 15) : ic('circle-check', 15, 'ok');
-  el.innerHTML = `${icon}<span class="grow">${esc(msg)}</span>${opt.action ? `<button class="ta">${esc(opt.action)}</button>` : ''}<button class="ibtn ibtn-xs" aria-label="Dismiss" style="color:inherit;opacity:.6">${ic('x', 13)}</button>`;
+  el.innerHTML = `${icon}<span class="grow">${esc(msg)}</span>${opt.action ? `<button class="ta">${esc(opt.action)}</button>` : ''}<button class="ibtn ibtn-xs" aria-label="${tr('Dismiss')}" style="color:inherit;opacity:.6">${ic('x', 13)}</button>`;
   const kill = () => {
     el.classList.add('out');
     setTimeout(() => el.remove(), 160);
@@ -28,7 +29,7 @@ export function toast(msg, opt = {}) {
 /* guarded mutation: simulates offline failures for the "Failed to save" state */
 export function mutate(fn, label) {
   if (S.ui.offline) {
-    toast("Your changes couldn't be saved. You're offline.", { kind: 'err', action: 'Try again', onAction: () => mutate(fn, label) });
+    toast(tr("Your changes couldn't be saved. You're offline."), { kind: 'err', action: tr('Try again'), onAction: () => mutate(fn, label) });
     return false;
   }
   fn();
