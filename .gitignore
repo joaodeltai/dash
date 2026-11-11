@@ -12,3 +12,4 @@ coverage/
 supabase/.temp/
 supabase/.branches/
 .vitest/
+.vercel

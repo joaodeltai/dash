@@ -320,20 +320,24 @@ as $$ select coalesce(private.my_role(ws) in ('owner', 'admin'), false) $$;
 
 -- Nível de acesso do usuário atual a um projeto:
 -- 0 sem acesso · 1 ver · 2 comentar · 3 editar · 4 acesso total.
--- Visibilidade: dono do workspace (sempre, para que nenhum projeto fique órfão), criador (enquanto não for
--- convidado), membro do projeto, ou qualquer não-convidado quando o projeto não é privado.
+-- Visibilidade: dono do workspace (sempre, para que nenhum projeto fique órfão), líder do projeto, criador
+-- (enquanto não for convidado), membro do projeto, ou qualquer não-convidado quando o projeto não é privado.
 create function private.project_perm(pid uuid) returns integer
 language sql stable security definer set search_path = ''
 as $$
   select coalesce((
     select case
-      when not (
+      -- coalesce: lead_id e created_by podem ser nulos, e "nulo" nunca pode virar acesso
+      when not coalesce(
         m.role = 'owner'
-        or (p.created_by = (select auth.uid()) and m.role <> 'guest')
+        or p.lead_id is not distinct from m.id
+        or (p.created_by is not distinct from (select auth.uid()) and m.role <> 'guest')
         or pm.member_id is not null
-        or (not p.is_private and m.role <> 'guest')
+        or (not p.is_private and m.role <> 'guest'),
+        false
       ) then 0
-      when m.role in ('owner', 'admin') or p.lead_id = m.id or (p.created_by = (select auth.uid()) and m.role <> 'guest') then 4
+      when m.role in ('owner', 'admin') or p.lead_id is not distinct from m.id
+        or (p.created_by is not distinct from (select auth.uid()) and m.role <> 'guest') then 4
       when pm.permission = 'Full access' then 4
       when pm.permission = 'Can edit' then 3
       when pm.permission = 'Can comment' then 2
@@ -358,7 +362,11 @@ as $$
     join public.members m on m.id = mid and m.workspace_id = p.workspace_id and m.status = 'active'
     left join public.project_members pm on pm.project_id = p.id and pm.member_id = m.id
     where p.id = pid
-      and (m.role = 'owner' or (p.created_by = m.user_id and m.role <> 'guest') or pm.member_id is not null or (not p.is_private and m.role <> 'guest'))
+      and coalesce(
+        m.role = 'owner' or p.lead_id is not distinct from m.id or (p.created_by is not distinct from m.user_id and m.role <> 'guest')
+        or pm.member_id is not null or (not p.is_private and m.role <> 'guest'),
+        false
+      )
   )
 $$;
 
@@ -607,7 +615,8 @@ begin
     return coalesce(new, old);
   end if;
   if tg_op = 'DELETE' then
-    if old.role = 'owner' then
+    -- o dono só sai junto com o workspace (cascata da exclusão do próprio workspace)
+    if old.role = 'owner' and exists (select 1 from public.workspaces w where w.id = old.workspace_id) then
       raise exception 'the workspace owner cannot be removed' using errcode = '42501';
     end if;
     return old;
@@ -745,7 +754,7 @@ begin
   for r in
     select m.id from public.members m
     where m.workspace_id = new.workspace_id and m.id is distinct from new.author_id
-      and position('@' || m.name in new.body) > 0
+      and new.body ~ ('@' || regexp_replace(m.name, '([][\\.^$*+?(){}|-])', '\\\1', 'g') || '([^[:alnum:]_]|$)')
   loop
     mentioned := mentioned || r.id;
     perform private.notify(new.workspace_id, r.id, new.author_id, 'mention', t.id, t.project_id, 'mentioned you in', new.body);
