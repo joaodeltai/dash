@@ -279,7 +279,13 @@ export function dateIn(timeZone: string, now: Date = new Date()): string {
 
 /* An error as a short message that is safe to store and show: secrets are removed and the text is cut. */
 export function safeMessage(err: unknown, secrets: (string | undefined | null)[] = []): string {
-  let msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
+  let msg: string;
+  try {
+    // whatever was thrown (an Error, a text, an object, nothing at all) ends up as a text
+    msg = String(err instanceof Error ? err.message : typeof err === 'string' ? err : (JSON.stringify(err) ?? err));
+  } catch {
+    msg = 'unknown error';
+  }
   for (const s of secrets) if (s && s.length >= 4) msg = msg.split(s).join('[redacted]');
   msg = msg.replace(/([?&](?:token|key|apikey|access_token)=)[^&\s"']+/gi, '$1[redacted]').replace(/(bearer\s+)[a-z0-9._~+/=-]{8,}/gi, '$1[redacted]');
   return (msg || 'unknown error').slice(0, 1000);

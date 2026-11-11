@@ -19,8 +19,30 @@ create extension if not exists pg_net;
 -- 2) Endereço da função e segredo compartilhado, guardados no Vault (criptografados).
 --    TROQUE os dois valores antes de rodar. O segredo é o mesmo valor do secret
 --    SOCIAL_COLLECT_SECRET da função. Não salve este arquivo com os valores preenchidos.
-select vault.create_secret('https://<ref-do-projeto>.supabase.co/functions/v1/social-collect', 'social_collect_url');
-select vault.create_secret('<mesmo-valor-de-SOCIAL_COLLECT_SECRET>', 'social_collect_secret');
+--    Pode ser rodado de novo: se o segredo já existe no Vault, o valor é atualizado.
+do $vault$
+declare
+  entry record;
+  existing uuid;
+begin
+  for entry in
+    select * from (values
+      ('social_collect_url', 'https://<ref-do-projeto>.supabase.co/functions/v1/social-collect'),
+      ('social_collect_secret', '<mesmo-valor-de-SOCIAL_COLLECT_SECRET>')
+    ) as v(name, value)
+  loop
+    if entry.value like '%<%' then
+      raise exception 'Troque o valor de % antes de rodar este arquivo.', entry.name;
+    end if;
+    select id into existing from vault.secrets where name = entry.name;
+    if existing is null then
+      perform vault.create_secret(entry.value, entry.name);
+    else
+      perform vault.update_secret(existing, entry.value);
+    end if;
+  end loop;
+end
+$vault$;
 
 -- 3) Agendamento. Rodar de novo com o mesmo nome substitui o agendamento anterior.
 select cron.schedule(

@@ -172,6 +172,16 @@ describe('helpers', () => {
     expect(safeMessage('x'.repeat(5000)).length).toBe(1000);
   });
 
+  it('turns anything that was thrown into a message', () => {
+    expect(safeMessage(undefined)).toBe('undefined');
+    expect(safeMessage(null)).toBe('null');
+    expect(safeMessage({ code: 7 })).toBe('{"code":7}');
+    expect(safeMessage(new Error(''))).toBe('unknown error');
+    const loop = {};
+    loop.self = loop;
+    expect(safeMessage(loop)).toBe('unknown error');
+  });
+
   it('compares secrets', () => {
     expect(sameSecret('abc', 'abc')).toBe(true);
     expect(sameSecret('abc', 'abd')).toBe(false);
@@ -485,6 +495,40 @@ describe('collectAll', () => {
     const refused = await collectAll(db, ENV, fakeFetch(routes()));
     expect(refused.runs[0]).toMatchObject({ status: 'error', accounts_ok: 0, message: 'saving snapshots: write to social_snapshots refused' });
     expect(db.writes.social_collect_runs).toHaveLength(1);
+  });
+
+  it('records each platform as soon as it ends, and survives a source that throws nothing useful', async () => {
+    const order = [];
+    const db = fakeDb({ collectors: collectors(), accounts: ACCOUNTS });
+    const from = db.from;
+    db.from = table => {
+      const q = from(table);
+      if (table === 'social_collect_runs') {
+        const insert = q.insert;
+        q.insert = row => (order.push(`recorded ${row.platform}`), insert(row));
+      }
+      return q;
+    };
+    const fetch = async url => {
+      const u = String(url);
+      if (u.includes('instagram')) {
+        await new Promise(r => setTimeout(r, 60));
+        order.push('instagram answered');
+        return new Response(JSON.stringify(igItems), { status: 201 });
+      }
+      if (u.includes('tiktok')) throw undefined; // a source may throw anything, even nothing
+      return new Response(JSON.stringify(ttItems), { status: 201 });
+    };
+    const { runs } = await collectAll(db, ENV, fetch);
+    expect(runs.map(r => [r.platform, r.status]).sort()).toEqual([
+      ['instagram', 'success'],
+      ['tiktok', 'error'],
+      ['youtube', 'error'],
+    ]);
+    expect(order.indexOf('recorded tiktok')).toBeLessThan(order.indexOf('instagram answered'));
+    expect(order.indexOf('recorded youtube')).toBeLessThan(order.indexOf('instagram answered'));
+    expect(order[order.length - 1]).toBe('recorded instagram');
+    expect(db.writes.social_collect_runs).toHaveLength(3);
   });
 
   it('narrows the collection to a platform and skips disabled collectors and inactive accounts', async () => {

@@ -183,14 +183,38 @@ export async function collectAll(db: Db, env: Env, fetch: Fetch, filters: Filter
     .map(c => ({ c, accounts: accounts.filter(a => a.workspace_id === c.workspace_id && a.platform === c.platform) }))
     .filter(j => j.accounts.length);
 
-  const runs = await Promise.all(jobs.map(j => collectPlatform(db, j.c, j.accounts, env, fetch, ga4Token)));
-
-  // The history is written per platform as well: one row that fails to save does not hide the others.
-  await Promise.all(
-    runs.map(async run => {
-      const { error } = await db.from('social_collect_runs').insert(run);
-      if (error)
-        console.error(`social-collect: could not record the ${run.platform} run: ${safeMessage(error.message, [env.apifyToken, env.ga4ServiceAccount])}`);
+  const secrets = [env.apifyToken, env.ga4ServiceAccount];
+  // Each platform is collected and its outcome recorded as soon as it ends, without waiting for the slow ones:
+  // if the function is cut short, the platforms that already finished have their row in the history.
+  const runs = await Promise.all(
+    jobs.map(async j => {
+      let run: RunRow;
+      try {
+        run = await collectPlatform(db, j.c, j.accounts, env, fetch, ga4Token);
+      } catch (e) {
+        // collectPlatform is written not to throw; this keeps one platform from ever taking the others down
+        const at = new Date().toISOString();
+        run = {
+          workspace_id: j.c.workspace_id,
+          platform: j.c.platform,
+          collector_id: j.c.id,
+          status: 'error',
+          message: safeMessage(e, secrets),
+          accounts_total: j.accounts.length,
+          accounts_ok: 0,
+          snapshots_written: 0,
+          posts_written: 0,
+          started_at: at,
+          finished_at: at,
+        };
+      }
+      try {
+        const { error } = await db.from('social_collect_runs').insert(run);
+        if (error) console.error(`social-collect: could not record the ${run.platform} run: ${safeMessage(error.message, secrets)}`);
+      } catch (e) {
+        console.error(`social-collect: could not record the ${run.platform} run: ${safeMessage(e, secrets)}`);
+      }
+      return run;
     }),
   );
   return { date: dateIn(env.timeZone), runs };

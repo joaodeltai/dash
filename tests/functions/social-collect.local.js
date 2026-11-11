@@ -474,7 +474,7 @@ async function main() {
     await call({ workspace_id: WS, platform: 'instagram' });
     check('the same holds for instagram', seen.length === 1 && seen[0].path.includes('mock~instagram-alt'), JSON.stringify(seen.map(s => s.path)));
 
-    // --- a platform that breaks in a different way: the service is unreachable
+    // --- a platform that breaks in a different way: its actor does not exist (HTTP 404)
     sql(`update public.social_collectors set actor = 'missing/actor' where workspace_id = ${lit(WS)} and platform = 'tiktok'`);
     const fourth = await call({ workspace_id: WS });
     const r4 = byPlatform(fourth.json?.runs);
