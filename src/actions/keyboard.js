@@ -1,7 +1,7 @@
 /* ---------- keyboard ---------- */
 import { $, $$ } from '../core/utils.js';
 import { STATUSES } from '../core/constants.js';
-import { S } from '../core/store.js';
+import { S, canCreate } from '../core/store.js';
 import { go, render } from '../shell/render.js';
 import { closeModal } from '../overlays/modals.js';
 import { closePop } from '../overlays/popovers.js';
@@ -205,7 +205,7 @@ document.addEventListener('keydown', e => {
     A.newTask();
     return;
   }
-  if (k === 'p' || k === 'P') {
+  if ((k === 'p' || k === 'P') && canCreate()) {
     e.preventDefault();
     A.newProject();
     return;

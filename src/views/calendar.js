@@ -1,7 +1,7 @@
 /* ---------- CALENDAR ---------- */
 import { MONL, TODAY, WD, addD, diffD, esc, fmtDate, iso, parse, sod } from '../core/utils.js';
 import { ic } from '../core/icons.js';
-import { D, S, allTasks, pColor, proj } from '../core/store.js';
+import { D, S, allTasks, canSee, pColor, proj } from '../core/store.js';
 import { av, prIcon, stIcon } from '../ui/helpers.js';
 import { fxc } from '../shell/render.js';
 import { applyView, viewOf, viewToolbar } from '../shell/view-engine.js';
@@ -12,16 +12,35 @@ export function startOfWeek(d) {
   const diff = (x.getDay() - ws + 7) % 7;
   return addD(x, -diff);
 }
+/* Events the user may see. A project-less event (or one whose project is gone) belongs to the whole
+   workspace; an event of a private project the user is not in is never listed. */
+export function visibleEvents(pid) {
+  return D().events.filter(e => {
+    const p = e.project ? proj(e.project) : null;
+    if (p && !canSee(p)) return false;
+    return !pid || p?.id === pid;
+  });
+}
+/* Is this day inside the month/week the calendar is showing? */
+export function dateVisible(ds) {
+  const cur = parse(S.ui.calDate);
+  const d = parse(ds);
+  if (!d) return false;
+  if (S.ui.calMode === 'month') return d.getFullYear() === cur.getFullYear() && d.getMonth() === cur.getMonth();
+  const n = diffD(d, startOfWeek(cur));
+  return n >= 0 && n < 7;
+}
+const evTime = e => (e.time ? esc(e.time) : '');
 export function calendarHtml(ts, opt = {}) {
   const cur = parse(S.ui.calDate);
   const mode = S.ui.calMode;
-  const evs = opt.events ? D().events.filter(e => !opt.project || e.project === opt.project) : [];
+  const evs = opt.events ? visibleEvents(opt.project) : [];
   const itemsOn = ds => [...evs.filter(e => e.date === ds).map(e => ({ ev: e })), ...ts.filter(t => t.due === ds).map(t => ({ t }))];
   const wdn = Array.from({ length: 7 }, (_, i) => WD[(i + S.prefs.weekStart) % 7]);
   const chip = it => {
     if (it.ev) {
       const p = proj(it.ev.project);
-      return `<button class="cev event" style="--c:${pColor(p)}" data-a="pop" data-pop="event" data-id="${it.ev.id}" title="${esc(it.ev.title)} · ${it.ev.time}"><span class="num faint" style="font-size:11px">${it.ev.time}</span><span class="trunc">${esc(it.ev.title)}</span></button>`;
+      return `<button class="cev event" style="--c:${pColor(p)}" data-a="pop" data-pop="event" data-id="${it.ev.id}" title="${esc(it.ev.title)}${it.ev.time ? ' · ' + esc(it.ev.time) : ''}">${it.ev.time ? `<span class="num faint" style="font-size:11px">${evTime(it.ev)}</span>` : ''}<span class="trunc">${esc(it.ev.title)}</span></button>`;
     }
     const t = it.t;
     const p = proj(t.project);
@@ -41,7 +60,12 @@ export function calendarHtml(ts, opt = {}) {
           const items = itemsOn(ds);
           const today = diffD(d, TODAY) === 0;
           return `<div class="cday ${d.getMonth() !== cur.getMonth() ? 'out' : ''} ${today ? 'today' : ''}" data-drop-day="${ds}">
-          <span class="dn" ${today ? 'aria-current="date"' : ''}>${d.getDate()}</span>
+          ${
+            opt.events
+              ? `<button class="dn" data-a="pop" data-pop="daylist" data-date="${ds}" data-key="${opt.key || ''}" ${today ? 'aria-current="date"' : ''} aria-label="${fmtDate(ds, true)}: add or view items">${d.getDate()}</button>`
+              : `<span class="dn" ${today ? 'aria-current="date"' : ''}>${d.getDate()}</span>`
+          }
+          ${opt.events ? `<button class="ibtn ibtn-xs add" style="right:28px" data-a="newEvent" data-date="${ds}" ${opt.project ? `data-project="${opt.project}"` : ''} aria-label="Add event on ${fmtDate(ds)}">${ic('calendar-plus', 13)}</button>` : ''}
           <button class="ibtn ibtn-xs add" data-a="newTask" data-due="${ds}" ${opt.project ? `data-project="${opt.project}"` : ''} aria-label="Add task on ${fmtDate(ds)}">${ic('plus', 13)}</button>
           ${items.slice(0, 3).map(chip).join('')}
           ${items.length > 3 ? `<button class="cmore" data-a="pop" data-pop="daylist" data-date="${ds}" data-key="${opt.key || ''}">+${items.length - 3} more</button>` : ''}
@@ -57,26 +81,26 @@ export function calendarHtml(ts, opt = {}) {
         const ds = iso(d);
         const items = itemsOn(ds).sort((a, b) => (a.ev ? 0 : 1) - (b.ev ? 0 : 1));
         const today = diffD(d, TODAY) === 0;
-        return `<div class="wcol"><div class="wcol-h ${today ? 'today' : ''}"><span class="n">${d.getDate()}</span><span class="muted" style="font-size:12px">${WD[d.getDay()]}</span><span class="sp"></span><button class="ibtn ibtn-xs" data-a="newTask" data-due="${ds}" ${opt.project ? `data-project="${opt.project}"` : ''} aria-label="Add task">${ic('plus', 13)}</button></div>
+        return `<div class="wcol"><div class="wcol-h ${today ? 'today' : ''}"><span class="n">${d.getDate()}</span><span class="muted" style="font-size:12px">${WD[d.getDay()]}</span><span class="sp"></span>${opt.events ? `<button class="ibtn ibtn-xs" data-a="newEvent" data-date="${ds}" ${opt.project ? `data-project="${opt.project}"` : ''} aria-label="Add event on ${fmtDate(ds)}">${ic('calendar-plus', 13)}</button>` : ''}<button class="ibtn ibtn-xs" data-a="newTask" data-due="${ds}" ${opt.project ? `data-project="${opt.project}"` : ''} aria-label="Add task on ${fmtDate(ds)}">${ic('plus', 13)}</button></div>
         <div class="wcol-b" data-drop-day="${ds}">${
           items
             .map(it => {
               if (it.ev) {
                 const p = proj(it.ev.project);
-                return `<button class="wcard event" style="--c:${pColor(p)}" data-a="pop" data-pop="event" data-id="${it.ev.id}"><span class="t"><span class="pdot" style="--c:${pColor(p)};border-radius:50%"></span>${esc(it.ev.title)}</span><span class="m">${ic('clock', 11)}${it.ev.time} · ${esc(p.name)}</span></button>`;
+                return `<button class="wcard event" style="--c:${pColor(p)}" data-a="pop" data-pop="event" data-id="${it.ev.id}"><span class="t"><span class="pdot" style="--c:${pColor(p)};border-radius:50%"></span>${esc(it.ev.title)}</span><span class="m">${it.ev.time ? ic('clock', 11) + evTime(it.ev) : ic('calendar', 11) + 'All day'} · <span class="trunc">${esc(p?.name || 'No project')}</span></span></button>`;
               }
               const t = it.t;
               const p = proj(t.project);
               return `<button class="wcard${fxc('moved', t.id)}" style="--c:${pColor(p)}" draggable="true" data-drag-cal="${t.id}" data-a="openTask" data-id="${t.id}" data-ctx="task"><span class="t" style="${t.status === 'done' ? 'text-decoration:line-through;color:var(--text-3)' : ''}"><span class="pdot" style="--c:${pColor(p)}"></span>${esc(t.title)}</span><span class="m">${stIcon(t.status, 11)}${prIcon(t.priority, 11)}<span class="trunc grow">${esc(p.name)}</span>${av(t.assignee, 'sm', false)}</span></button>`;
             })
-            .join('') || '<span class="faint" style="font-size:12px;padding:4px">No tasks</span>'
+            .join('') || `<span class="faint" style="font-size:12px;padding:4px">${opt.events ? 'Nothing scheduled' : 'No tasks'}</span>`
         }</div></div>`;
       })
       .join('')}</div>`;
   }
   const projs = [...new Set(ts.map(t => t.project))].map(proj).filter(Boolean);
   return `<div class="cal" style="min-height:640px">
-    <div class="toolbar" style="gap:8px">
+    <div class="toolbar" style="gap:8px;flex-shrink:0">
       <button class="btn btn-secondary btn-sm" data-a="calNav" data-d="0">Today</button>
       <div class="row" style="gap:0"><button class="ibtn ibtn-sm" data-a="calNav" data-d="-1" aria-label="Previous">${ic('chevron-left', 16)}</button><button class="ibtn ibtn-sm" data-a="calNav" data-d="1" aria-label="Next">${ic('chevron-right', 16)}</button></div>
       <h2 style="font-size:15px;font-weight:600;margin:0 4px;letter-spacing:-.01em" aria-live="polite">${label}</h2>
@@ -89,6 +113,7 @@ export function calendarHtml(ts, opt = {}) {
               .join('')}</span>`
           : ''
       }
+      ${opt.events ? `<button class="btn btn-secondary btn-sm" data-a="newEvent" data-date="${dateVisible(iso(TODAY)) ? iso(TODAY) : iso(cur)}" ${opt.project ? `data-project="${opt.project}"` : ''} aria-label="New event">${ic('calendar-plus', 14)}<span class="hide-m">New event</span></button>` : ''}
       <div class="seg">${[
         ['month', 'Month'],
         ['week', 'Week'],

@@ -9,7 +9,7 @@ export function toast(msg, opt = {}) {
   if (!host) return;
   const el = document.createElement('div');
   el.className = 'toast';
-  el.setAttribute('role', 'status');
+  el.setAttribute('role', opt.kind === 'err' ? 'alert' : 'status');
   const icon = opt.kind === 'err' ? ic('circle-alert', 15, 'bad') : opt.kind === 'info' ? ic('info', 15) : ic('circle-check', 15, 'ok');
   el.innerHTML = `${icon}<span class="grow">${esc(msg)}</span>${opt.action ? `<button class="ta">${esc(opt.action)}</button>` : ''}<button class="ibtn ibtn-xs" aria-label="Dismiss" style="color:inherit;opacity:.6">${ic('x', 13)}</button>`;
   const kill = () => {

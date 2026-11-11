@@ -8,7 +8,65 @@ document.querySelectorAll('link[data-font]').forEach(l => {
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-export const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 8);
+/* Rich text (task descriptions) is HTML written by any member, so it is rebuilt from an allow-list before it is
+   stored or shown. Anything else (scripts, styles, event handlers, unknown tags and attributes, javascript: links)
+   is dropped; the text inside a removed formatting tag is kept, the content of a removed dangerous tag is not. */
+const RICH_TAGS = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'UL', 'OL', 'LI', 'A', 'CODE', 'PRE', 'BLOCKQUOTE', 'H1', 'H2', 'H3']);
+const DROP_TAGS = new Set([
+  'SCRIPT',
+  'STYLE',
+  'IFRAME',
+  'OBJECT',
+  'EMBED',
+  'TEMPLATE',
+  'NOSCRIPT',
+  'SVG',
+  'MATH',
+  'TEXTAREA',
+  'SELECT',
+  'TITLE',
+  'HEAD',
+  'LINK',
+  'META',
+]);
+const SAFE_HREF = /^(https?:|mailto:)/i;
+export function sanitizeHtml(html) {
+  if (html == null || html === '') return '';
+  const doc = new DOMParser().parseFromString(`<!doctype html><body>${String(html)}`, 'text/html');
+  const out = document.createElement('div');
+  const copy = (from, to) => {
+    for (const n of from.childNodes) {
+      if (n.nodeType === 3) to.appendChild(document.createTextNode(n.nodeValue));
+      if (n.nodeType !== 1) continue;
+      let tag = n.tagName.toUpperCase(); // SVG/MathML elements report lowercase names
+      if (DROP_TAGS.has(tag)) continue;
+      if (tag === 'DIV') tag = 'P'; // contenteditable wraps new lines in <div>
+      if (tag === 'H4' || tag === 'H5' || tag === 'H6') tag = 'H3'; // the editor's heading button uses <h4>
+      if (!RICH_TAGS.has(tag)) {
+        copy(n, to);
+        continue;
+      }
+      const el = document.createElement(tag);
+      if (tag === 'A') {
+        const href = (n.getAttribute('href') || '').trim();
+        if (SAFE_HREF.test(href)) {
+          el.setAttribute('href', href);
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noopener noreferrer');
+        }
+      }
+      copy(n, el);
+      to.appendChild(el);
+    }
+  };
+  copy(doc.body, out);
+  return out.innerHTML;
+}
+/* Ids are UUIDs: they are primary keys in the database. The prefix argument is kept for call-site readability only. */
+export const uid = () =>
+  crypto.randomUUID
+    ? crypto.randomUUID()
+    : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16));
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const MOD = isMac ? '⌘' : 'Ctrl';

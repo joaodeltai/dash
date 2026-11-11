@@ -2,8 +2,9 @@
 import { $$, MOD, ago, esc, fmtDate } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { PCOLORS, PICONS } from '../core/constants.js';
-import { D, S, mem, pColor, proj, task, teamsList } from '../core/store.js';
-import { FT, av, filePrev, lbl, prPill, stPill } from '../ui/helpers.js';
+import { D, S, canCreate, canSee, isAdmin, mem, pColor, proj, task, teamsList, visibleProjects } from '../core/store.js';
+import { FT, authorName, av, lbl, prPill, stPill } from '../ui/helpers.js';
+import { MAX_MB, imageState } from '../ui/file-urls.js';
 import { focusKey, render } from '../shell/render.js';
 import { teamModal } from '../features/teams.js';
 
@@ -49,6 +50,8 @@ export function modalHtml(m) {
       return wrap('lg', shortcutsModal(H));
     case 'team':
       return wrap('', teamModal(m, H));
+    case 'event':
+      return wrap('sm', eventModal(m, H));
     case 'filePreview':
       return wrap('lg', filePreviewModal(m, H));
     case 'saveView':
@@ -84,8 +87,21 @@ export function taskModal(m, H) {
       ${f.subtasks.map((s, i) => `<div class="subt" style="padding:0 4px">${ic('circle', 13)}<span class="s">${esc(s.title)}</span><button type="button" class="ibtn ibtn-xs x" style="opacity:1" data-a="formRmSub" data-i="${i}" aria-label="Remove">${ic('x', 12)}</button></div>`).join('')}
       <div class="inwrap">${ic('plus', 14)}<input class="input" id="f-sub" data-key-enter="formAddSub" placeholder="Add a subtask and press Enter"></div></div>
     <div class="field"><span class="label">Attachments</span>
-      ${f.files.length ? `<div class="col" style="gap:4px">${f.files.map((x, i) => `<div class="upl" style="padding:6px 10px"><span class="ftype" style="--c:${FT[x.type].c};width:22px;height:22px">${ic(FT[x.type].i, 12)}</span><span class="grow trunc">${esc(x.name)}</span><span class="faint" style="font-size:11.5px">${x.size}</span><button type="button" class="ibtn ibtn-xs" data-a="formRmFile" data-i="${i}" aria-label="Remove">${ic('x', 12)}</button></div>`).join('')}</div>` : ''}
-      <label class="dropzone" style="padding:10px">${ic('paperclip', 14)}<span>Attach files</span><input type="file" multiple hidden data-in="formFiles"></label></div>
+      ${
+        (f.existing || []).length || f.files.length
+          ? `<div class="col" style="gap:4px">${[
+              ...(f.existing || []).map(
+                x =>
+                  `<div class="upl" style="padding:6px 10px"><span class="ftype" style="--c:${(FT[x.type] || FT.other).c};width:22px;height:22px">${ic((FT[x.type] || FT.other).i, 12)}</span><span class="grow trunc">${esc(x.name)}</span><span class="faint" style="font-size:11.5px">${esc(x.size)}</span><button type="button" class="ibtn ibtn-xs" data-a="formRmExisting" data-id="${x.id}" aria-label="Remove ${esc(x.name)}">${ic('x', 12)}</button></div>`,
+              ),
+              ...f.files.map(
+                (x, i) =>
+                  `<div class="upl" style="padding:6px 10px"><span class="ftype" style="--c:${(FT[x.type] || FT.other).c};width:22px;height:22px">${ic((FT[x.type] || FT.other).i, 12)}</span><span class="grow trunc">${esc(x.name)}</span><span class="faint" style="font-size:11.5px">${x.size} · uploads when you save</span><button type="button" class="ibtn ibtn-xs" data-a="formRmFile" data-i="${i}" aria-label="Remove ${esc(x.name)}">${ic('x', 12)}</button></div>`,
+              ),
+            ].join('')}</div>`
+          : ''
+      }
+      <label class="dropzone" data-dropzone-form style="padding:10px">${ic('paperclip', 14)}<span>Attach files <span class="faint">— up to ${MAX_MB} MB each</span></span><input type="file" multiple hidden data-in="formFiles"></label></div>
   </form>
   <div class="modal-f">${m.edit ? '' : `<label class="row" style="gap:8px;font-size:12.5px;color:var(--text-2);cursor:pointer"><input type="checkbox" class="toggle" id="f-more" data-in="formMore" ${f.more ? 'checked' : ''}>Create more</label>`}<span class="sp"></span>
     <span class="faint hide-m" style="font-size:11.5px"><kbd>${MOD}</kbd> <kbd>↵</kbd></span>
@@ -158,8 +174,8 @@ export function projectModal(m, H) {
         .join('')}</div></div>
     </div>
     <div class="row" style="gap:12px;flex-wrap:wrap">
-      <div class="field" style="flex:1;min-width:150px"><label class="label" for="p-team">Team</label><select class="select" id="p-team" data-in="pform" data-f="team">${teamsList()
-        .map(t => `<option value="${t.id}" ${f.team === t.id ? 'selected' : ''}>${t.name}</option>`)
+      <div class="field" style="flex:1;min-width:150px"><label class="label" for="p-team">Team</label><select class="select" id="p-team" data-in="pform" data-f="team"><option value="" ${f.team ? '' : 'selected'}>No team</option>${teamsList()
+        .map(t => `<option value="${t.id}" ${f.team === t.id ? 'selected' : ''}>${esc(t.name)}</option>`)
         .join('')}</select></div>
       <div class="field" style="flex:1;min-width:150px"><label class="label" for="p-lead">Lead</label><select class="select" id="p-lead" data-in="pform" data-f="lead">${D()
         .members.filter(x => x.status === 'active')
@@ -167,9 +183,51 @@ export function projectModal(m, H) {
         .join('')}</select></div>
       <div class="field" style="flex:1;min-width:150px"><label class="label" for="p-due">Target date</label><input type="date" class="input" id="p-due" data-in="pform" data-f="due" value="${f.due || ''}"></div>
     </div>
+    ${milestonesField(f)}
     ${m.edit ? '' : `<div class="field"><span class="label">Template</span><div class="tmpls" role="radiogroup">${TEMPLATES.map(t => `<button type="button" role="radio" aria-checked="${f.tmpl === t.id}" class="opt ${f.tmpl === t.id ? 'on' : ''}" data-a="pformSet" data-f="tmpl" data-v="${t.id}" style="padding:10px">${ic(t.icon, 16)}<b style="font-size:12.5px">${t.name}</b><span>${t.tasks.length ? t.tasks.length + ' starter tasks' : t.desc}</span></button>`).join('')}</div></div>`}
   </form>
   <div class="modal-f"><span class="sp"></span><button class="btn btn-secondary" data-a="closeModal">Cancel</button><button class="btn btn-primary" data-a="submitProject">${m.edit ? 'Save changes' : 'Create project'}</button></div>`;
+}
+/* Milestones: one row per milestone (name + date). Rows stay in the order typed; they are sorted by date on save. */
+export function milestonesField(f) {
+  const ms = f.ms || [];
+  const errs = S.ui.errors.pms || {};
+  return `<fieldset class="field" style="border:0;padding:0;margin:0;min-width:0"><legend class="label" style="margin-bottom:6px">Milestones <span class="faint" style="font-weight:400">· ${ms.length}</span></legend>
+    ${ms
+      .map((x, i) => {
+        const e = errs[i];
+        return `<div class="field" style="margin-bottom:6px"><div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">
+          <div class="grow" style="min-width:150px"><label class="sr" for="p-ms-n-${i}">Milestone ${i + 1} name</label><input class="input ${e ? 'is-error' : ''}" id="p-ms-n-${i}" data-in="pms" data-f="name" data-i="${i}" data-key-enter="pmsEnter" maxlength="200" value="${esc(x.name)}" placeholder="e.g. Beta launch" aria-invalid="${!!e}" ${e ? `aria-describedby="p-ms-e-${i}"` : ''}></div>
+          <div><label class="sr" for="p-ms-d-${i}">Milestone ${i + 1} date</label><input type="date" class="input ${e ? 'is-error' : ''}" id="p-ms-d-${i}" data-in="pms" data-f="date" data-i="${i}" value="${esc(x.date || '')}" aria-invalid="${!!e}"></div>
+          <button type="button" class="ibtn ibtn-sm" data-a="pmsRm" data-i="${i}" aria-label="Remove milestone ${i + 1}">${ic('x', 14)}</button>
+        </div>${e ? `<span class="err" id="p-ms-e-${i}" role="alert">${ic('circle-alert', 12)}${e}</span>` : ''}</div>`;
+      })
+      .join('')}
+    ${ms.length ? '' : '<span class="hint" style="margin-bottom:6px">No milestones yet. Add key dates to see them on the timeline and in the project overview.</span>'}
+    <div><button type="button" class="btn btn-secondary btn-sm" data-a="pmsAdd">${ic('plus', 14)}Add milestone</button></div></fieldset>`;
+}
+/* Event form (create and edit). The submit button sits in the footer, tied to the form by id, so Enter submits. */
+export function eventModal(m, H) {
+  const f = S.ui.evform;
+  const er = S.ui.errors;
+  const projs = visibleProjects().filter(canSee);
+  const cur = proj(f.project);
+  if (cur && !projs.includes(cur)) projs.push(cur);
+  const msg = (id, t) => (t ? `<span class="err" id="${id}" role="alert">${ic('circle-alert', 12)}${t}</span>` : '');
+  return `${H(m.edit ? 'Edit event' : 'New event')}
+  <form class="modal-b" id="ev-form" data-submit="submitEvent" novalidate>
+    <div class="field"><label class="label" for="ev-title">Title</label><input class="input ${er.etitle ? 'is-error' : ''}" id="ev-title" data-in="evform" data-f="title" data-key-mod-enter="evSubmit" maxlength="200" value="${esc(f.title)}" placeholder="e.g. Design review" autocomplete="off" autofocus aria-invalid="${!!er.etitle}" ${er.etitle ? 'aria-describedby="ev-title-err"' : ''}>${msg('ev-title-err', er.etitle)}</div>
+    <div class="row" style="gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:150px"><label class="label" for="ev-date">Date</label><input type="date" class="input ${er.edate ? 'is-error' : ''}" id="ev-date" data-in="evform" data-f="date" data-key-mod-enter="evSubmit" value="${esc(f.date)}" aria-invalid="${!!er.edate}" ${er.edate ? 'aria-describedby="ev-date-err"' : ''}>${msg('ev-date-err', er.edate)}</div>
+      <div class="field" style="flex:1;min-width:150px"><label class="label" for="ev-time">Time <span class="faint" style="font-weight:400">(optional)</span></label><input type="time" class="input ${er.etime ? 'is-error' : ''}" id="ev-time" data-in="evform" data-f="time" data-key-mod-enter="evSubmit" value="${esc(f.time)}" aria-invalid="${!!er.etime}" ${er.etime ? 'aria-describedby="ev-time-err"' : ''}>${msg('ev-time-err', er.etime)}</div>
+    </div>
+    <div class="field"><label class="label" for="ev-project">Project <span class="faint" style="font-weight:400">(optional)</span></label><select class="select" id="ev-project" data-in="evform" data-f="project"><option value="">No project</option>${projs
+      .map(p => `<option value="${p.id}" ${f.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`)
+      .join('')}</select><span class="hint">Events without a project are visible to everyone in the workspace.</span></div>
+  </form>
+  <div class="modal-f">${m.edit ? `<button type="button" class="btn btn-danger-ghost" data-a="delEvent" data-id="${m.edit}">${ic('trash-2', 14)}Delete</button>` : ''}<span class="sp"></span>
+    <span class="faint hide-m" style="font-size:11.5px"><kbd>${MOD}</kbd> <kbd>↵</kbd></span>
+    <button type="button" class="btn btn-secondary" data-a="closeModal">Cancel</button><button type="submit" form="ev-form" class="btn btn-primary" id="ev-submit">${m.edit ? 'Save changes' : 'Add event'}</button></div>`;
 }
 export const PERMS = ['Can view', 'Can comment', 'Can edit', 'Full access'];
 export function shareModal(m, H) {
@@ -178,7 +236,7 @@ export function shareModal(m, H) {
   p.access = p.access || 'workspace';
   return `${H(`Share “${esc(p.name)}”`)}
   <div class="modal-b">
-    <form class="row" style="gap:6px" data-submit="shareInvite"><div class="grow"><label class="sr" for="share-in">Invite by email</label><input class="input" id="share-in" placeholder="Add people by name or email" value="${esc(S.ui.shareQ || '')}" data-in="shareQ" autofocus></div>
+    <form class="row" style="gap:6px" data-submit="shareInvite"><div class="grow"><label class="sr" for="share-in">Invite by email</label><input class="input" id="share-in" placeholder="${canCreate() ? 'Add people by name or email' : 'Add workspace members by name'}" value="${esc(S.ui.shareQ || '')}" data-in="shareQ" autofocus></div>
       <select class="select" id="share-perm" style="width:132px" aria-label="Permission">${PERMS.map(x => `<option ${x === 'Can edit' ? 'selected' : ''}>${x}</option>`).join('')}</select>
       <button class="btn btn-primary" data-a="shareInvite" type="button">Invite</button></form>
     ${
@@ -193,7 +251,7 @@ export function shareModal(m, H) {
                   `<button class="mi" data-a="shareAdd" data-id="${p.id}" data-mid="${x.id}">${av(x.id, 'sm', false)}${esc(x.name)}<span class="r">${esc(x.email)}</span></button>`,
               )
               .join('') ||
-            `<div class="mi faint" style="cursor:default">${S.ui.shareQ.includes('@') ? `Press Invite to send an invitation to ${esc(S.ui.shareQ)}` : 'No matching members — enter an email to invite someone new'}</div>`
+            `<div class="mi faint" style="cursor:default">${!canCreate() ? 'No matching members in this workspace' : S.ui.shareQ.includes('@') ? `Press Invite to add ${esc(S.ui.shareQ)} as a guest. No email is sent: they get access when they sign up with this address.` : 'No matching members — enter an email to invite someone new'}</div>`
           }</div>`
         : ''
     }
@@ -215,16 +273,17 @@ export function shareModal(m, H) {
 }
 export function inviteModal(m, H) {
   const err = S.ui.errors.invite;
-  return `${H('Invite to ' + esc(D().ws.name), 'Invited people get an email with a link to join.')}
+  return `${H('Invite to ' + esc(D().ws.name), 'No email is sent. People join automatically when they sign up or log in with the address you add here.')}
   <form class="modal-b" data-submit="submitInvite">
     <div class="field"><label class="label" for="inv-emails">Email addresses</label><textarea class="textarea ${err ? 'is-error' : ''}" id="inv-emails" placeholder="name@company.com, another@company.com" rows="3" autofocus>${esc(S.ui.inviteDraft || '')}</textarea>${err ? `<span class="err">${ic('circle-alert', 12)}${err}</span>` : '<span class="hint">Separate multiple addresses with commas.</span>'}</div>
-    <div class="row" style="gap:12px"><div class="field grow"><label class="label" for="inv-role">Role</label><select class="select" id="inv-role">${['Member', 'Admin', 'Guest'].map(r => `<option>${r}</option>`).join('')}</select></div>
-    <div class="field grow"><label class="label" for="inv-team">Team</label><select class="select" id="inv-team">${teamsList()
-      .map(t => `<option value="${t.id}">${t.name}</option>`)
+    <div class="row" style="gap:12px"><div class="field grow"><label class="label" for="inv-role">Role</label><select class="select" id="inv-role">${(isAdmin() ? ['Member', 'Admin', 'Guest'] : ['Member', 'Guest']).map(r => `<option>${r}</option>`).join('')}</select></div>
+    <div class="field grow"><label class="label" for="inv-team">Team</label><select class="select" id="inv-team"><option value="">No team</option>${teamsList()
+      .map(t => `<option value="${t.id}">${esc(t.name)}</option>`)
       .join('')}</select></div></div>
     <div class="alert info">${ic('info', 14)}<span><b>Guests</b> can only see projects they're added to and can't create projects.</span></div>
+    <div class="alert info">${ic('link', 14)}<span>Let them know they're invited: copy the sign-up link and send it yourself. They'll see ${esc(D().ws.name)} as soon as they create an account with the invited email.</span></div>
   </form>
-  <div class="modal-f"><button class="btn btn-ghost" data-a="copyInviteLink">${ic('link', 14)}Copy invite link</button><span class="sp"></span><button class="btn btn-secondary" data-a="closeModal">Cancel</button><button class="btn btn-primary" data-a="submitInvite" id="inv-submit">Send invites</button></div>`;
+  <div class="modal-f"><button class="btn btn-ghost" data-a="copyInviteLink">${ic('link', 14)}Copy sign-up link</button><span class="sp"></span><button class="btn btn-secondary" data-a="closeModal">Cancel</button><button class="btn btn-primary" data-a="submitInvite" id="inv-submit">Invite</button></div>`;
 }
 export function confirmModal(m) {
   const needs = m.typeName;
@@ -278,13 +337,39 @@ export const SHORTCUTS = [
   ],
 ];
 export function shortcutsModal(H) {
-  return `${H('Keyboard shortcuts')}<div class="modal-b" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px">${SHORTCUTS.map(([g, list]) => `<div><div class="eyebrow" style="margin-bottom:6px">${g}</div>${list.map(([n, k]) => `<div class="row" style="height:30px;font-size:13px;border-bottom:1px solid var(--divider)"><span class="grow">${n}</span>${k.map((x, i) => `${i && k[0] === 'G' ? '<span class="faint" style="font-size:11px">then</span>' : ''}<kbd>${x}</kbd>`).join('')}</div>`).join('')}</div>`).join('')}</div>`;
+  return `${H('Keyboard shortcuts')}<div class="modal-b" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px">${SHORTCUTS.map(
+    ([g, all]) => [g, all.filter(([n]) => canCreate() || n !== 'New project')],
+  )
+    .map(
+      ([g, list]) =>
+        `<div><div class="eyebrow" style="margin-bottom:6px">${g}</div>${list.map(([n, k]) => `<div class="row" style="height:30px;font-size:13px;border-bottom:1px solid var(--divider)"><span class="grow">${n}</span>${k.map((x, i) => `${i && k[0] === 'G' ? '<span class="faint" style="font-size:11px">then</span>' : ''}<kbd>${x}</kbd>`).join('')}</div>`).join('')}</div>`,
+    )
+    .join('')}</div>`;
 }
 export function filePreviewModal(m, H) {
-  const f = m.file;
+  const f = D().files.find(x => x.id === m.file?.id) || m.file;
   const t = FT[f.type] || FT.other;
-  return `${H(esc(f.name), `${t.n} · ${f.size} · Uploaded by ${esc(mem(f.by)?.name || 'you')} ${ago(f.at)}`)}
-  <div class="modal-b"><div style="border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden">${filePrev(f).replace('class="fprev"', 'class="fprev" style="aspect-ratio:16/9"')}</div>
-  ${m.tid ? `<div class="row faint" style="font-size:12.5px">${ic('link', 13)}Attached to <button class="link" data-a="openTask" data-id="${m.tid}">${esc(task(m.tid)?.title)}</button></div>` : ''}</div>
-  <div class="modal-f"><button class="btn btn-secondary" data-a="copyLink" data-fid="${f.id}">${ic('link', 14)}Copy link</button><span class="sp"></span><button class="btn btn-primary" data-a="closeModal">Close</button></div>`;
+  const box =
+    'border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--sunken);display:grid;place-items:center;min-height:220px;max-height:62vh;';
+  const note = (icon, text, extra = '') =>
+    `<div class="col" style="align-items:center;gap:10px;padding:32px 20px;text-align:center;color:var(--text-2);font-size:13px"><span style="color:${t.c}">${ic(icon, 34)}</span><span style="max-width:380px">${text}</span>${extra}</div>`;
+  let body;
+  if (!f.path) body = note('file-x', "This file has no stored content, so it can't be previewed, downloaded or shared. Upload it again to replace it.");
+  else if (f.type === 'img') {
+    const im = imageState(f.path);
+    if (im.state === 'ready')
+      body = `<img data-fpath="${esc(f.path)}" src="${esc(im.url)}" alt="${esc(f.name)}" style="display:block;max-width:100%;max-height:62vh;object-fit:contain">`;
+    else if (im.state === 'error')
+      body = note(
+        'image-off',
+        esc(im.error),
+        im.broken ? '' : `<button class="btn btn-secondary btn-sm" data-a="retryPreview" data-id="${f.id}">${ic('rotate-ccw', 13)}Try again</button>`,
+      );
+    else body = note('loader', 'Loading preview…');
+  } else body = note(t.i, `No preview for ${esc(t.n.toLowerCase())} files here. Download it or open it in a new tab.`);
+  const can = f.path ? '' : 'disabled';
+  return `${H(esc(f.name), `${t.n} · ${esc(f.size)}${proj(f.project) ? ' · ' + esc(proj(f.project).name) : ''} · Uploaded by ${esc(f.by === D().me ? 'you' : authorName(f.by))} ${ago(f.at)}`)}
+  <div class="modal-b"><div style="${box}">${body}</div>
+  ${m.tid && task(m.tid) ? `<div class="row faint" style="font-size:12.5px">${ic('link', 13)}Attached to <button class="link" data-a="openTask" data-id="${m.tid}">${esc(task(m.tid).title)}</button></div>` : ''}</div>
+  <div class="modal-f"><button class="btn btn-ghost" data-a="copyFileLink" data-id="${f.id}" ${can} title="Creates a private link that stops working after 1 hour">${ic('link', 14)}Copy temporary link</button><span class="sp"></span><button class="btn btn-secondary" data-a="openFile" data-id="${f.id}" ${can}>${ic('external-link', 14)}Open in new tab</button><button class="btn btn-primary" data-a="downloadFile" data-id="${f.id}" ${can}>${ic('download', 14)}Download</button></div>`;
 }

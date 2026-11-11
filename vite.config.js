@@ -50,4 +50,8 @@ function lucideSubset() {
 export default defineConfig({
   plugins: [lucideSubset()],
   server: { port: 5173 },
+  build: {
+    // The Supabase client changes far less often than the app: its own chunk stays cached across deploys.
+    rollupOptions: { output: { manualChunks: { supabase: ['@supabase/supabase-js'] } } },
+  },
 });

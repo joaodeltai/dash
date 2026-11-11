@@ -1,7 +1,7 @@
 /* ---------------- CONTEXT MENUS ---------------- */
 import { ic } from '../core/icons.js';
 import { ST } from '../core/constants.js';
-import { D, mem, proj, task, visibleProjects } from '../core/store.js';
+import { D, canCreate, canManage, mem, proj, task, visibleProjects } from '../core/store.js';
 
 export function ctxMenu(p) {
   const I = (act, icon, label, extra = '', r = '') =>
@@ -25,7 +25,7 @@ export function ctxMenu(p) {
       I('dupTask', 'copy', 'Duplicate') +
       I('archiveTask', 'archive', 'Archive') +
       sep +
-      I('delTask', 'trash-2', 'Delete', 'danger', 'Del')
+      I('delTask', 'trash-2', 'Delete', 'danger')
     );
   }
   if (p.ctx === 'project') {
@@ -37,7 +37,7 @@ export function ctxMenu(p) {
       I('editProject', 'pencil', 'Rename & edit') +
       I('share', 'share-2', 'Share') +
       I('copyLink', 'link', 'Copy link') +
-      I('dupProject', 'copy', 'Duplicate') +
+      (canCreate() ? I('dupProject', 'copy', 'Duplicate') : '') +
       sep +
       (visibleProjects().indexOf(pr) > 0 ? I('projUp', 'arrow-up', 'Move up in sidebar') : '') +
       (visibleProjects().indexOf(pr) < visibleProjects().length - 1 ? I('projDown', 'arrow-down', 'Move down in sidebar') : '') +
@@ -58,25 +58,34 @@ export function ctxMenu(p) {
   if (p.ctx === 'member') {
     const m = mem(p.id);
     if (!m) return '';
-    const canRm = m.role !== 'Owner' && m.id !== D().me;
+    const invited = m.status === 'invited';
+    // Owners and admins manage other members; never the owner, never themselves (the database enforces this too).
+    const manage = canManage(m);
     return (
       I('viewProfile', 'user', 'View profile') +
-      I('assignToMember', 'plus', 'Assign a task') +
+      (invited ? '' : I('assignToMember', 'plus', 'Assign a task')) +
       I('copyEmail', 'mail', 'Copy email') +
-      (canRm
-        ? I('ctxRole', 'shield', 'Change role…') +
-          (m.status === 'invited' ? I('resendInvite', 'send', 'Resend invite') : '') +
+      (invited && canCreate() ? I('copyInviteLink', 'link', 'Copy sign-up link') : '') +
+      (manage
+        ? (invited ? '' : I('ctxRole', 'shield', 'Change role…')) +
           sep +
-          I('removeMember', 'user-minus', 'Remove from workspace', 'danger')
+          I('removeMember', invited ? 'user-x' : 'user-minus', invited ? 'Cancel invitation' : 'Remove from workspace', 'danger')
         : '')
     );
   }
   if (p.ctx === 'file') {
+    const f = D().files.find(x => x.id === p.id);
+    if (!f) return '';
     return (
       I('previewFile', 'eye', 'Preview') +
+      (f.path
+        ? I('downloadFile', 'download', 'Download') +
+          I('openFile', 'external-link', 'Open in new tab') +
+          I('copyFileLink', 'link', 'Copy temporary link', '', '1 h')
+        : '') +
+      sep +
       I('renameFile', 'pencil', 'Rename') +
-      I('copyLink', 'link', 'Copy link') +
-      I('dupFile', 'copy', 'Duplicate') +
+      (f.path ? I('dupFile', 'copy', 'Duplicate') : '') +
       sep +
       I('delFile', 'trash-2', 'Delete', 'danger')
     );

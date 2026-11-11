@@ -437,3 +437,23 @@ h3.sub {
 .offline-bar .i {
   color: var(--amber);
 }
+
+/* Save indicator in the top bar: silent when everything is stored. */
+.sync-state {
+  font-size: 12px;
+  color: var(--text-3, var(--text-2));
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+.sync-state:empty {
+  display: none;
+}
+.sync-state[data-s='offline'],
+.sync-state[data-s='error'] {
+  color: var(--red);
+}
+@media (max-width: 640px) {
+  .sync-state[data-s='saving'] {
+    display: none;
+  }
+}

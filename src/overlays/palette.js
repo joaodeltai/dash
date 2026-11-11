@@ -2,8 +2,8 @@
 import { MOD, clamp, esc } from '../core/utils.js';
 import { LOGO, ic, wsLogo } from '../core/icons.js';
 import { PSTAT } from '../core/constants.js';
-import { D, S, allTasks, pColor, proj, save, task } from '../core/store.js';
-import { FT, av, hl, stIcon } from '../ui/helpers.js';
+import { D, S, allTasks, canCreate, canSee, isOver, pColor, proj, save, task, visibleProjects } from '../core/store.js';
+import { FT, authorAv, av, hl, stIcon } from '../ui/helpers.js';
 import { effectiveDark } from '../core/theme.js';
 import { go, render } from '../shell/render.js';
 import { sortTasks } from '../shell/view-engine.js';
@@ -12,6 +12,7 @@ import { openModal } from './modals.js';
 import { A } from '../actions/actions.js';
 
 export function commands() {
+  const guestHidden = canCreate() ? [] : ['c-proj', 'c-inv'];
   return [
     { id: 'c-task', name: 'Create task', icon: 'plus', kbd: 'N', run: () => A.newTask(document.body) },
     { id: 'c-proj', name: 'Create project', icon: 'folder-plus', kbd: 'P', run: () => A.newProject() },
@@ -54,7 +55,7 @@ export function commands() {
     { id: 'c-side', name: 'Toggle sidebar', icon: 'panel-left', kbd: '[', run: () => A.toggleSide() },
     { id: 'c-keys', name: 'Keyboard shortcuts', icon: 'keyboard', kbd: '?', run: () => A.shortcuts() },
     { id: 'c-out', name: 'Sign out', icon: 'log-out', run: () => A.signOut() },
-  ];
+  ].filter(c => !guestHidden.includes(c.id));
 }
 export function paletteItems() {
   const pl = S.ui.palette;
@@ -83,7 +84,7 @@ export function paletteItems() {
         items: recent.map(t => ({
           html: stIcon(t.status),
           name: t.title,
-          sub: proj(t.project).name,
+          sub: proj(t.project)?.name,
           r: t.key,
           run: () => A.openTask({ dataset: { id: t.id } }),
         })),
@@ -109,20 +110,18 @@ export function paletteItems() {
         },
       })),
     });
+    // Suggestions come from this workspace's data: only offer what has something to show.
+    const firstProj = visibleProjects().find(p => canSee(p) && p.status !== 'complete');
+    const overdue = allTasks().filter(isOver).length;
+    const mine = allTasks().filter(t => t.assignee === D().me && t.status !== 'done').length;
     groups.push({
       name: 'Suggested',
       items: [
-        { icon: 'clock-alert', name: 'Overdue tasks', run: () => A.goTasks({ dataset: { f: 'overdue' } }) },
-        { icon: 'user', name: 'Tasks assigned to me', run: () => go('mytasks') },
-        {
-          icon: 'signal-high',
-          name: 'High priority in Website Redesign',
-          run: () => {
-            go('project', { id: 'p1', tab: 'v:v1' });
-          },
-        },
-        { icon: 'paperclip', name: 'Files in Website Redesign', run: () => go('project', { id: 'p1', tab: 'files' }) },
-      ],
+        overdue && { icon: 'clock-alert', name: 'Overdue tasks', r: String(overdue), run: () => A.goTasks({ dataset: { f: 'overdue' } }) },
+        mine && { icon: 'user', name: 'Tasks assigned to me', r: String(mine), run: () => go('mytasks') },
+        firstProj && { icon: 'folder', name: `Open ${firstProj.name}`, run: () => go('project', { id: firstProj.id }) },
+        firstProj && { icon: 'paperclip', name: `Files in ${firstProj.name}`, run: () => go('project', { id: firstProj.id, tab: 'files' }) },
+      ].filter(Boolean),
     });
     return groups;
   }
@@ -132,7 +131,7 @@ export function paletteItems() {
       name: 'Tasks',
       items: r.tasks
         .slice(0, lim)
-        .map(t => ({ html: stIcon(t.status), name: t.title, sub: proj(t.project).name, r: t.key, run: () => A.openTask({ dataset: { id: t.id } }) })),
+        .map(t => ({ html: stIcon(t.status), name: t.title, sub: proj(t.project)?.name, r: t.key, run: () => A.openTask({ dataset: { id: t.id } }) })),
     });
   if (sc === 'all' || sc === 'projects')
     groups.push({
@@ -153,9 +152,9 @@ export function paletteItems() {
     groups.push({
       name: 'Files',
       items: r.files.slice(0, lim).map(f => ({
-        icon: FT[f.type].i,
+        icon: (FT[f.type] || FT.other).i,
         name: f.name,
-        sub: proj(f.project).name,
+        sub: proj(f.project)?.name,
         r: f.size,
         run: () => openModal({ type: 'filePreview', file: f, tid: f.task }),
       })),
@@ -163,9 +162,12 @@ export function paletteItems() {
   if (sc === 'all' || sc === 'comments')
     groups.push({
       name: 'Comments',
-      items: r.comments
-        .slice(0, lim)
-        .map(c => ({ html: av(c.by, 'sm', false), name: c.text, sub: 'on ' + task(c.task).title, run: () => A.openTask({ dataset: { id: c.task } }) })),
+      items: r.comments.slice(0, lim).map(c => ({
+        html: authorAv(c.by, 'sm', false),
+        name: c.text,
+        sub: 'on ' + (task(c.task)?.title || 'a task'),
+        run: () => A.openTask({ dataset: { id: c.task } }),
+      })),
     });
   const out = groups.filter(g => g.items.length);
   out.push({
