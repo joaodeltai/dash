@@ -44,6 +44,11 @@ export default {
   '30 days': '30 dias',
   '90 days': '90 dias',
   '12 months': '12 meses',
+  // rótulos curtos dos botões de período (d = dias, m = meses)
+  '7d': '7d',
+  '30d': '30d',
+  '90d': '90d',
+  '12m': '12m',
   'Since the start': 'Desde o início',
   'Collection failed': 'Coleta falhou',
   'The last automatic collection of this network failed.': 'A última coleta automática desta rede falhou.',

@@ -24,12 +24,9 @@ const change = (delta, pct, compact) =>
   delta === null || delta === undefined
     ? `<span class="faint">—</span>`
     : `<span class="soc-chg ${trend(delta)}">${fmtDelta(delta, compact)}${fmtPct(pct) && delta !== 0 ? `<span class="soc-pct"> ${fmtPct(pct)}</span>` : ''}</span>`;
-export const PERIODS = [
-  ['7', '7d'],
-  ['30', '30d'],
-  ['90', '90d'],
-  ['365', '12m'],
-];
+export const PERIODS = ['7', '30', '90', '365'];
+/* The short label of a period, as written on its button. */
+const periodShort = p => ({ 7: tr('7d'), 30: tr('30d'), 90: tr('90d'), 365: tr('12m') })[p];
 const periodName = p => ({ 7: tr('7 days'), 30: tr('30 days'), 90: tr('90 days'), 365: tr('12 months') })[p];
 const sourceName = s => (s === 'manual' ? tr('typed by hand') : s === 'csv' ? tr('from a CSV') : tr('collected automatically'));
 
@@ -146,7 +143,7 @@ export function chartPanel(accounts) {
 
   const controls = `<div class="soc-chart-c">
     ${accounts.length > 1 ? `<select class="select" style="width:auto;min-width:150px;max-width:220px" data-in="socialFilter" data-f="account" aria-label="${tr('Account')}">${option('', tr('All accounts'), f.account)}${accounts.map(a => option(a.id, `${platformName(a.platform)} · ${a.display_name || a.handle}`, f.account)).join('')}</select>` : ''}
-    <div class="seg" role="group" aria-label="${tr('Period')}">${PERIODS.map(([v, short]) => `<button class="${f.period === v ? 'on' : ''}" data-a="socialPeriod" data-v="${v}" aria-pressed="${f.period === v}" aria-label="${periodName(v)}">${short}</button>`).join('')}</div>
+    <div class="seg" role="group" aria-label="${tr('Period')}">${PERIODS.map(v => `<button class="${f.period === v ? 'on' : ''}" data-a="socialPeriod" data-v="${v}" aria-pressed="${f.period === v}" aria-label="${periodName(v)}">${periodShort(v)}</button>`).join('')}</div>
     <button class="ibtn ibtn-sm ${SOC.table ? 'on' : ''}" data-a="socialToggleTable" aria-pressed="${SOC.table}" data-tip="${SOC.table ? tr('Show chart') : tr('Show table')}" aria-label="${SOC.table ? tr('Show chart') : tr('Show table')}">${ic(SOC.table ? 'chart-line' : 'table-2', 15)}</button>
   </div>`;
   const headline = last
