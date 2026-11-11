@@ -30,6 +30,7 @@ export const ROUTE_NAMES = {
   teams: 'Teams',
   team: 'Team',
   activity: 'Activity',
+  social: 'Social media',
   settings: 'Settings',
   // internal galleries, development builds only
   ...(import.meta.env.DEV ? { system: 'Design system', states: 'System states' } : {}),
@@ -49,6 +50,7 @@ export const ROUTE_ICONS = {
   timeline: 'chart-gantt',
   members: 'users',
   activity: 'activity',
+  social: 'trending-up',
   teams: 'users',
   settings: 'settings',
   system: 'component',

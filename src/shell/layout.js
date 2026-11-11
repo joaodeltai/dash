@@ -17,6 +17,7 @@ import { pageFavorites } from '../pages/favorites.js';
 import { pageProjects } from '../pages/projects.js';
 import { pageMember, pageMembers, pageTeam, pageTeams } from '../pages/members.js';
 import { pageActivity } from '../pages/activity.js';
+import { pageSocial } from '../pages/social.js';
 import { pageSearch } from '../pages/search.js';
 import { page404, stateFailed } from '../pages/errors.js';
 import { pageProject } from '../pages/project.js';
@@ -60,6 +61,7 @@ export function renderPage() {
       teams: pageTeams,
       team: pageTeam,
       activity: pageActivity,
+      social: pageSocial,
       settings: pageSettings,
       // Internal galleries: development builds only.
       ...(import.meta.env.DEV ? { system: pageSystem, states: pageStates } : {}),
@@ -111,6 +113,7 @@ export function renderSidebar() {
         ${sItem('timeline', tr('Timeline'), 'chart-gantt')}
         ${sItem('members', tr('Members'), 'users')}
         ${sItem('activity', tr('Activity'), 'activity')}
+        ${canCreate() ? sItem('social', tr('Social media'), 'trending-up') : ''}
       </div>
       <div class="sgroup" id="side-projects">
         <div class="sgroup-h"><span>${tr('Projects')}</span><span class="sp"></span>${canCreate() ? `<button class="ibtn ibtn-xs" data-a="newProject" data-tip="${tr('New project')}  P" aria-label="${tr('New project')}">${ic('plus', 14)}</button>` : ''}</div>

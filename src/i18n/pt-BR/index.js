@@ -10,5 +10,6 @@ import actionsMain from './actions-main.js';
 import actionsMisc from './actions-misc.js';
 import shellUi from './shell-ui.js';
 import viewsFeatures from './views-features.js';
+import social from './social.js';
 
-export default Object.assign({}, core, pagesAccount, pagesWork, overlaysForms, overlaysMenus, actionsMain, actionsMisc, shellUi, viewsFeatures, common);
+export default Object.assign({}, core, pagesAccount, pagesWork, overlaysForms, overlaysMenus, actionsMain, actionsMisc, shellUi, viewsFeatures, social, common);
