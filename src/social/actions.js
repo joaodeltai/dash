@@ -13,6 +13,8 @@ import { platformName } from './platforms.js';
 import { dateText } from './dashboard.js';
 
 const MAX_CSV_BYTES = 2 * 1024 * 1024;
+/* A name cut for a title or a toast: the longest names would not fit on one line. */
+const short = name => (name.length > 48 ? name.slice(0, 48) + '…' : name);
 
 /* ---------- dialogs ---------- */
 export function openDialog(dialog, form = {}) {
@@ -157,7 +159,7 @@ A.socialRemove = el => {
   const a = accountById(el.dataset.id);
   if (!a) return;
   confirmDlg({
-    title: tr('Remove {name}?', { name: a.display_name || a.handle }),
+    title: tr('Remove {name}?', { name: short(a.display_name || a.handle) }),
     body: tr('The {network} account and all of its history (numbers, posts and goal) are deleted. This cannot be undone.', {
       network: platformName(a.platform),
     }),

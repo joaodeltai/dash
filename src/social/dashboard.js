@@ -9,7 +9,7 @@ import { S } from '../core/store.js';
 import { render } from '../shell/render.js';
 import { SOC, accountById, brandNames, filteredAccounts, goalOf, growthOf, platformIds, postsOnScreen } from './data.js';
 import { audienceLabel, platformName, platformOf, profileUrl } from './platforms.js';
-import { addDays, buildSeries, chartGeometry, fmtCompact, fmtDelta, fmtNum, fmtPct, goalProgress, todayIn, trend } from './logic.js';
+import { addDays, buildSeries, chartGeometry, fmtCompact, fmtDelta, fmtNum, fmtPct, goalProgress, tickLabels, todayIn, trend } from './logic.js';
 
 /* ---------- small pieces ---------- */
 export const dateText = (d, long) => {
@@ -47,7 +47,7 @@ export function alerts() {
         : tr('{network}: the last automatic collection brought {ok} of {total} accounts.', { network: name, ok: r.accounts_ok, total: r.accounts_total });
       return `<div class="alert ${failed ? 'danger' : 'warn'} soc-alert" role="alert" data-platform="${esc(r.platform)}">${ic('triangle-alert', 15)}<span class="grow"><b>${head}</b> <span class="faint">${esc(when)}</span>
         <span class="soc-alert-text">${tr("The numbers on screen are the last ones that arrived. You can enter today's by hand.")}</span>
-        ${r.message ? `<span class="soc-alert-msg">${esc(r.message)}</span>` : ''}</span>
+        ${r.message ? `<span class="soc-alert-msg" title="${esc(r.message)}">${esc(r.message)}</span>` : ''}</span>
         <button class="btn btn-sm btn-secondary" data-a="socialNumbers" data-platform="${esc(r.platform)}">${tr('Enter numbers')}</button></div>`;
     })
     .join('');
@@ -168,6 +168,7 @@ export function chartPanel(accounts) {
   else {
     const ticks = g.scale.ticks;
     const yOf = v => 100 - ((v - g.scale.lo) / Math.max(1, g.scale.hi - g.scale.lo)) * 100;
+    const yLabels = tickLabels(ticks);
     // dates under the line, each at its own place: the ends always, the middle point only when it is not crowding them
     const mid = g.pts[Math.floor((g.pts.length - 1) / 2)];
     const xLabels =
@@ -175,7 +176,7 @@ export function chartPanel(accounts) {
         ? `<span class="m" style="left:50%">${dateText(first.date)}</span>`
         : `<span class="s">${dateText(first.date)}</span>${mid.x > 24 && mid.x < 76 ? `<span class="m" style="left:${mid.x}%">${dateText(mid.date)}</span>` : ''}<span class="e">${dateText(last.date)}</span>`;
     body = `<div class="soc-chart">
-      <div class="soc-y" aria-hidden="true">${ticks.map(t => `<span style="top:${yOf(t)}%">${fmtCompact(t)}</span>`).join('')}</div>
+      <div class="soc-y" aria-hidden="true" style="width:calc(${Math.max(...yLabels.map(l => l.length))}ch + 4px)">${ticks.map((t, i) => `<span style="top:${yOf(t)}%">${yLabels[i]}</span>`).join('')}</div>
       <div class="soc-plot" tabindex="0" role="img" aria-label="${tr('{label} from {from} to {to}: {first} to {last}. Use the arrow keys to read each day, or switch to the table.', { label: esc(label), from: dateText(first.date, true), to: dateText(last.date, true), first: fmtNum(first.value), last: fmtNum(last.value) })}">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           ${ticks.map(t => `<line class="soc-grid" x1="0" x2="100" y1="${yOf(t)}" y2="${yOf(t)}" />`).join('')}

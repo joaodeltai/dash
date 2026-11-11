@@ -14,6 +14,17 @@ export const fmtNum = n => (isNum(n) ? new Intl.NumberFormat(locale()).format(n)
 /* 12,345 -> "12.3K" / "12,3 mil". Small numbers stay whole. */
 export const fmtCompact = n =>
   !isNum(n) ? '—' : Math.abs(n) < 10000 ? fmtNum(n) : new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+/* Labels for the steps of an axis: as short as they can be while still telling the steps apart. Big numbers that
+   differ a little (5,000,000,000 and 5,000,500,000) get the decimals they need instead of all reading "5B". */
+export function tickLabels(ticks) {
+  for (let digits = 1; digits <= 6; digits++) {
+    const labels = ticks.map(t =>
+      !isNum(t) ? '—' : Math.abs(t) < 10000 ? fmtNum(t) : new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: digits }).format(t),
+    );
+    if (new Set(labels).size === labels.length) return labels;
+  }
+  return ticks.map(fmtNum);
+}
 /* A change with its sign: +200, −15, 0. */
 export const fmtDelta = (n, compact = false) =>
   !isNum(n) ? '—' : (n > 0 ? '+' : n < 0 ? '−' : '') + (compact ? fmtCompact(Math.abs(n)) : fmtNum(Math.abs(n)));

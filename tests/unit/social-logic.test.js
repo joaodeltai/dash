@@ -350,3 +350,19 @@ describe('review fixes', () => {
     expect(named.errors).toEqual([]);
   });
 });
+
+describe('axis labels', () => {
+  it('are short, and still tell the steps apart when big numbers differ a little', async () => {
+    const { tickLabels } = await import('../../src/social/logic.js');
+    expect(tickLabels([1000, 1200, 1400, 1600, 1800])).toEqual(['1,000', '1,200', '1,400', '1,600', '1,800']);
+    expect(tickLabels([0, 5000000, 10000000])).toEqual(['0', '5M', '10M']);
+    expect(tickLabels([12000, 12500, 13000])).toEqual(['12K', '12.5K', '13K']);
+    const close = tickLabels([5000000000, 5000500000, 5001000000, 5001500000, 5002000000]);
+    expect(new Set(close).size).toBe(5);
+    expect(close[0]).toBe('5B');
+    expect(close[1]).toBe('5.0005B');
+    const million = tickLabels([1200000, 1201000, 1202000, 1203000]);
+    expect(new Set(million).size).toBe(4);
+    expect(tickLabels([7])).toEqual(['7']);
+  });
+});

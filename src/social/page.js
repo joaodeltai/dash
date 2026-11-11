@@ -23,7 +23,8 @@ const accountLabel = a => `${platformName(a.platform)} · ${a.display_name || a.
 const err = (key, id) => (SOC.errors[key] ? `<span class="err" id="${id}" role="alert">${ic('circle-alert', 12)}${esc(SOC.errors[key])}</span>` : '');
 const invalid = key => (SOC.errors[key] ? 'is-error' : '');
 const option = (value, label, current) => `<option value="${esc(value)}" ${String(current ?? '') === String(value) ? 'selected' : ''}>${esc(label)}</option>`;
-const accountOptions = current => SOC.accounts.map(a => option(a.id, `${a.brand} · ${accountLabel(a)}`, current)).join('');
+/* network and account first, brand last: with a long brand the start of the label is what tells two accounts apart */
+const accountOptions = current => SOC.accounts.map(a => option(a.id, `${accountLabel(a)} · ${a.brand}`, current)).join('');
 
 /* ---------- loading ---------- */
 let kicked = false;

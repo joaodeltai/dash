@@ -50,6 +50,11 @@
   font-family: var(--mono);
   font-size: var(--fs-2xs);
   overflow-wrap: anywhere;
+  /* a long technical message is kept to a few lines; the whole text is in the title and in the history table */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .soc-filters {
   display: flex;
@@ -237,7 +242,7 @@
 }
 .soc-y {
   position: relative;
-  width: 48px;
+  min-width: 28px;
   font-size: var(--fs-2xs);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
@@ -636,9 +641,6 @@
   }
   .soc-chart {
     grid-template-rows: 180px auto;
-  }
-  .soc-y {
-    width: 40px;
   }
   .soc-chart-c {
     justify-content: flex-start;
