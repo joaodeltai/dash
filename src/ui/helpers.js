@@ -1,4 +1,5 @@
 /* ---------- small render helpers ---------- */
+import { tr } from '../core/i18n.js';
 import { TODAY, diffD, esc, parse, relDate } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { LB, PR, PSTAT, ST } from '../core/constants.js';
@@ -7,7 +8,7 @@ import { imageState } from './file-urls.js';
 
 export function av(id, cls = '', tip = true) {
   const m = mem(id);
-  if (!m) return `<span class="av empty ${cls}" ${tip ? 'data-tip="Unassigned"' : ''}>${ic('user', 11)}</span>`;
+  if (!m) return `<span class="av empty ${cls}" ${tip ? `data-tip="${tr('Unassigned')}"` : ''}>${ic('user', 11)}</span>`;
   const ini = esc(
     (m.name || '?')
       .split(' ')
@@ -20,10 +21,10 @@ export function av(id, cls = '', tip = true) {
 /* Authors (of comments, activity, files, notifications) can leave the workspace; the database then clears the
    reference. These two helpers are the single way to show "who did this", with a neutral fallback. */
 export const FORMER_MEMBER = 'Former member';
-export const authorName = id => mem(id)?.name || FORMER_MEMBER;
+export const authorName = id => mem(id)?.name || tr(FORMER_MEMBER);
 export function authorAv(id, cls = '', tip = true) {
   if (mem(id)) return av(id, cls, tip);
-  return `<span class="av empty ${cls}" ${tip ? `data-tip="${FORMER_MEMBER}"` : ''} aria-label="${FORMER_MEMBER}">${ic('user', 11)}</span>`;
+  return `<span class="av empty ${cls}" ${tip ? `data-tip="${tr(FORMER_MEMBER)}"` : ''} aria-label="${tr(FORMER_MEMBER)}">${ic('user', 11)}</span>`;
 }
 export function avStack(ids, max = 4, cls = 'sm') {
   const v = ids.slice(0, max);
@@ -52,11 +53,11 @@ export function prIcon(p, s = 14) {
   const bar = (x, h, on) => `<rect x="${x}" y="${12 - h}" width="2.6" height="${h}" rx="1" fill="${on ? 'var(--text-2)' : 'var(--border-strong)'}"/>`;
   return `<svg width="${s}" height="${s}" viewBox="0 0 14 14" aria-hidden="true" style="flex-shrink:0">${bar(1.8, 4.5, w >= 1)}${bar(5.7, 7.5, w >= 2)}${bar(9.6, 10.5, w >= 3)}</svg>`;
 }
-export const stPill = st => `${stIcon(st)}<span>${ST[st].name}</span>`;
-export const prPill = p => `${prIcon(p)}<span>${PR[p || 'none'].name}</span>`;
-export const lbl = id => (LB[id] ? `<span class="lbl" style="--c:${LB[id].c}"><i></i>${LB[id].name}</span>` : '');
+export const stPill = st => `${stIcon(st)}<span>${tr(ST[st].name)}</span>`;
+export const prPill = p => `${prIcon(p)}<span>${tr(PR[p || 'none'].name)}</span>`;
+export const lbl = id => (LB[id] ? `<span class="lbl" style="--c:${LB[id].c}"><i></i>${tr(LB[id].name)}</span>` : '');
 export const pIcon = (p, cls = '', s = 15) => `<span class="picon ${cls}" style="--c:${pColor(p)}">${ic(p.icon, s)}</span>`;
-export const pStatus = s => `<span class="pstatus" style="--c:${PSTAT[s].c}"><i></i>${PSTAT[s].name}</span>`;
+export const pStatus = s => `<span class="pstatus" style="--c:${PSTAT[s].c}"><i></i>${tr(PSTAT[s].name)}</span>`;
 export function dueHtml(t, withIcon = true) {
   if (!t.due) return '';
   const n = diffD(parse(t.due), TODAY);
@@ -85,12 +86,48 @@ export function fmtComment(txt) {
 export const FT = {
   fig: { c: '#8662C9', i: 'pen-tool', n: 'Figma' },
   pdf: { c: '#C4473A', i: 'file-text', n: 'PDF' },
-  zip: { c: '#6B7280', i: 'folder-archive', n: 'Archive' },
-  img: { c: '#23918A', i: 'image', n: 'Image' },
-  sheet: { c: '#3D8E5F', i: 'file-spreadsheet', n: 'Spreadsheet' },
-  doc: { c: '#3B82C4', i: 'file-text', n: 'Document' },
-  code: { c: '#C48A1E', i: 'file-code', n: 'Code' },
-  other: { c: '#6B7280', i: 'file', n: 'File' },
+  zip: {
+    c: '#6B7280',
+    i: 'folder-archive',
+    get n() {
+      return tr('Archive|file type');
+    },
+  },
+  img: {
+    c: '#23918A',
+    i: 'image',
+    get n() {
+      return tr('Image');
+    },
+  },
+  sheet: {
+    c: '#3D8E5F',
+    i: 'file-spreadsheet',
+    get n() {
+      return tr('Spreadsheet');
+    },
+  },
+  doc: {
+    c: '#3B82C4',
+    i: 'file-text',
+    get n() {
+      return tr('Document');
+    },
+  },
+  code: {
+    c: '#C48A1E',
+    i: 'file-code',
+    get n() {
+      return tr('Code');
+    },
+  },
+  other: {
+    c: '#6B7280',
+    i: 'file',
+    get n() {
+      return tr('File');
+    },
+  },
 };
 export function fileType(name) {
   const e = (name.split('.').pop() || '').toLowerCase();

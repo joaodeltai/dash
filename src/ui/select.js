@@ -4,6 +4,7 @@
    The native <select> stays in the DOM, visually hidden, as the source of
    truth, so existing `data-in` handlers and form reads keep working.
    ===================================================================== */
+import { tr } from '../core/i18n.js';
 import { esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 
@@ -18,7 +19,7 @@ export function enhanceSelects(root = document) {
     btn.setAttribute('aria-expanded', 'false');
     btn.setAttribute(
       'aria-label',
-      sel.getAttribute('aria-label') || (sel.id && document.querySelector(`label[for="${CSS.escape(sel.id)}"]`)?.textContent) || 'Choose',
+      sel.getAttribute('aria-label') || (sel.id && document.querySelector(`label[for="${CSS.escape(sel.id)}"]`)?.textContent) || tr('Choose'),
     );
     if (sel.id) btn.dataset.for = sel.id;
     const sync = () => {

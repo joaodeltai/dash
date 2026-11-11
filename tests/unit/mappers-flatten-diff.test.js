@@ -226,7 +226,7 @@ describe('flatten: validation and fallbacks', () => {
     expect([...run(st).workspaces.values()][0].slug).toHaveLength(48);
   });
 
-  it('numbers: position, task sequence and file size are sanitised', () => {
+  it('numbers: position and file size are sanitised; the task counter belongs to the database and is never sent', () => {
     expect(taskRow({ order: NaN }).position).toBe(0);
     expect(taskRow({ order: '3' }).position).toBe(0);
     expect(taskRow({ order: 2.5 }).position).toBe(2.5);
@@ -238,7 +238,7 @@ describe('flatten: validation and fallbacks', () => {
       { id: 'f3', project: ids.p1, name: 'c', type: 'x', mime: '', size: '', bytes: 10.6, at: 1 },
     ];
     const out = run(st);
-    expect(out.projects.get(ids.p1).task_seq).toBe(200);
+    expect('task_seq' in out.projects.get(ids.p1)).toBe(false);
     expect(['f1', 'f2', 'f3'].map(id => out.files.get(id).size_bytes)).toEqual([0, 0, 11]);
   });
 

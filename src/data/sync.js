@@ -18,7 +18,7 @@ const CHUNK = 200;
 const PARALLEL = 6;
 const RETRY_MS = [1500, 3000, 6000, 12000, 30000];
 
-export function createSync({ getClient, getContext, getState, onStatus, onRejected, onAuthLost, onDeletedFiles }) {
+export function createSync({ getClient, getContext, getState, onStatus, onRejected, onAuthLost, onDeletedFiles, onServerValues }) {
   let baseline = null;
   let timer = null;
   let holdTimer = null;
@@ -135,23 +135,43 @@ export function createSync({ getClient, getContext, getState, onStatus, onReject
     return any ? out : null;
   }
 
+  /* Columns the database decides (a task's key): what it returned replaces what was sent, in the baseline and,
+     through onServerValues, in the in-memory state. */
+  function adopt(name, pk, server, returned) {
+    const base = baseline[name];
+    const changed = [];
+    for (const got of returned || []) {
+      const key = keyOf(name, got);
+      const row = base.get(key);
+      if (!row) continue;
+      const diffCols = server.filter(col => got[col] !== undefined && got[col] !== row[col]);
+      if (diffCols.length) base.set(key, { ...row, ...Object.fromEntries(diffCols.map(col => [col, got[col]])) });
+      changed.push(got);
+    }
+    if (changed.length) onServerValues?.(name, changed);
+  }
+
   async function send(ops, gen) {
     const sb = getClient();
     // inserts and updates: parents first
-    for (const { name, pk, mode } of TABLES) {
+    for (const { name, pk, mode, server, serverOn } of TABLES) {
       const o = ops[name];
       if (!o) continue;
       const base = baseline[name];
+      const returning = server ? [...pk, ...server].join(',') : null;
       if (o.inserts.length) {
         if (mode === 'update') {
           for (const row of o.inserts) base.set(keyOf(name, row), row);
         } else {
           for (let i = 0; i < o.inserts.length; i += CHUNK) {
             const rows = o.inserts.slice(i, i + CHUNK);
-            const res = await sb.from(name).upsert(rows, { onConflict: pk.join(','), ignoreDuplicates: true });
+            let q = sb.from(name).upsert(rows, { onConflict: pk.join(','), ignoreDuplicates: true });
+            if (returning) q = q.select(returning);
+            const res = await q;
             check(res, name, 'insert');
             if (gen !== generation) return;
             for (const row of rows) base.set(keyOf(name, row), row);
+            if (returning) adopt(name, pk, server, res.data);
           }
         }
       }
@@ -168,21 +188,33 @@ export function createSync({ getClient, getContext, getState, onStatus, onReject
                     g.items.map(u => u.row[pk[0]]),
                   )
                 : q.match(pkOf(pk, g.items[0].row));
+            const readBack = returning && Object.keys(g.patch).some(col => (serverOn || server).includes(col));
+            if (readBack) q = q.select(returning);
             const res = await q;
             check(res, name, 'update');
             if (gen !== generation) return;
             if (typeof res.count === 'number' && res.count < g.items.length)
               throw rejected(name, 'update', { message: 'The item no longer exists or you do not have permission to change it.', code: 'NOT_UPDATED' });
             for (const u of g.items) base.set(u.key, u.row);
+            if (readBack) adopt(name, pk, server, res.data);
           });
         }
       }
     }
     // deletes: children first
+    // A project deleted in this cycle takes its tasks with it (cascade). Deleting them one by one first would
+    // record each as a separate "deleted" entry in the history, on top of the one for the project.
+    const doomedProjects = new Set((ops.projects?.deletes || []).map(x => x.row.id));
     for (const { name, pk, mode, deletable } of [...TABLES].reverse()) {
       const o = ops[name];
       if (!o?.deletes.length) continue;
       const base = baseline[name];
+      if (name === 'tasks' && doomedProjects.size) {
+        const cascaded = o.deletes.filter(x => doomedProjects.has(x.row.project_id));
+        for (const x of cascaded) base.delete(x.key);
+        o.deletes = o.deletes.filter(x => !doomedProjects.has(x.row.project_id));
+        if (!o.deletes.length) continue;
+      }
       if (mode === 'full' || deletable) {
         if (pk.length === 1) {
           for (let i = 0; i < o.deletes.length; i += CHUNK) {

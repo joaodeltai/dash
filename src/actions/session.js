@@ -2,16 +2,18 @@
    SESSION ACTIONS: sign-in, sign-up, password recovery, onboarding,
    workspaces. Everything here talks to the backend (Supabase).
    ===================================================================== */
-import { $, uid } from '../core/utils.js';
+import { $, $$, uid, unaccent } from '../core/utils.js';
+import { isLang, tr } from '../core/i18n.js';
 import { TEAMS_SEED } from '../core/constants.js';
-import { D, S, me } from '../core/store.js';
+import { D, S, cachePrefs, me, save } from '../core/store.js';
+import { applyPrefs } from '../core/theme.js';
 import { mutate, toast } from '../ui/toast.js';
 import { go, render } from '../shell/render.js';
 import { TEMPLATES } from '../overlays/modals.js';
 import { A, EMAIL_RE, IN, confirmDlg, copy, createProject } from './actions.js';
 import * as backend from '../data/backend.js';
 
-const PW_RULE = 'Use at least 10 characters, including a number or symbol';
+const pwRule = () => tr('Use at least 10 characters, including a number or symbol');
 const weak = pw => pw.length < 10 || !/[0-9\W]/.test(pw);
 
 /* Runs an async action behind a button: shows its spinner and ignores repeated clicks while it is in flight. */
@@ -35,7 +37,7 @@ async function run(btnId, fn) {
     }
   }
 }
-const say = err => toast(err?.message || 'Something went wrong. Try again.', { kind: 'err', ms: 6000 });
+const say = err => toast(err?.message || tr('Something went wrong. Try again.'), { kind: 'err', ms: 6000 });
 /* Back to an auth screen after a failed attempt that had already shown the loading splash. */
 function backToAuth(screen) {
   S.ui.booting = false;
@@ -50,6 +52,22 @@ A.auth = el => {
   S.ui.pwNew = '';
   render();
   setTimeout(() => $('.auth input')?.focus(), 20);
+};
+/* Language switch of the sign-in screens (and anywhere else the choice is made outside Settings). */
+A.setLang = el => {
+  const v = el.dataset.v;
+  if (!isLang(v)) return;
+  // the screen is rebuilt in the new language: keep whatever was typed in its fields
+  const typed = $$('.auth input[id]').map(i => [i.id, i.value]);
+  S.prefs.lang = v;
+  cachePrefs();
+  applyPrefs();
+  if (backend.ctx.wsId) save();
+  render();
+  for (const [id, val] of typed) {
+    const i = document.getElementById(id);
+    if (i && val && !i.value) i.value = val;
+  }
 };
 A.toggleShowPw = () => {
   const v = $('#l-pw')?.value;
@@ -68,9 +86,9 @@ A.doLogin = () => {
   const em = $('#l-email').value.trim(),
     pw = $('#l-pw').value;
   S.ui.af.email = em;
-  if (!em) e.email = 'Enter your email address';
-  else if (!EMAIL_RE.test(em)) e.email = 'Enter a valid email, like name@company.com';
-  if (!pw) e.pw = 'Enter your password';
+  if (!em) e.email = tr('Enter your email address');
+  else if (!EMAIL_RE.test(em)) e.email = tr('Enter a valid email, like name@company.com');
+  if (!pw) e.pw = tr('Enter your password');
   if (Object.keys(e).length) {
     render();
     (e.email ? $('#l-email') : $('#l-pw'))?.focus();
@@ -80,14 +98,14 @@ A.doLogin = () => {
   return run('login-btn', async () => {
     try {
       await backend.signIn(em, pw);
-      toast(`Signed in as ${em}`);
+      toast(tr('Signed in as {email}', { email: em }));
     } catch (err) {
       if (err.code === 'EMAIL_NOT_CONFIRMED') {
         backToAuth('verify');
-        toast('Confirm your email address to finish signing in.', { kind: 'info', ms: 6000 });
+        toast(tr('Confirm your email address to finish signing in.'), { kind: 'info', ms: 6000 });
         return;
       }
-      S.ui.errors = { login: err.message || 'Could not sign in. Try again.' };
+      S.ui.errors = { login: err.message || tr('Could not sign in. Try again.') };
       backToAuth('login');
       $('#l-pw')?.focus();
     }
@@ -113,9 +131,9 @@ A.doSignup = () => {
     pw = $('#s-pw').value;
   S.ui.af.name = nm;
   S.ui.af.email = em;
-  if (!nm) e.name = 'Enter your name';
-  if (!EMAIL_RE.test(em)) e.email = 'Enter a valid email address';
-  if (weak(pw)) e.pw = PW_RULE;
+  if (!nm) e.name = tr('Enter your name');
+  if (!EMAIL_RE.test(em)) e.email = tr('Enter a valid email address');
+  if (weak(pw)) e.pw = pwRule();
   if (Object.keys(e).length) {
     render();
     $('#s-email').value = em;
@@ -129,7 +147,7 @@ A.doSignup = () => {
         S.ui.auth = 'verify';
         startResend();
         render();
-      } else toast(`Welcome, ${nm.split(' ')[0]}`);
+      } else toast(tr('Welcome, {name}', { name: nm.split(' ')[0] }));
     } catch (err) {
       S.ui.booting = false;
       S.ui.auth = 'signup';
@@ -163,7 +181,7 @@ A.resend = el => {
       startResend();
       render();
     }
-    toast(`${isVerify ? 'Verification email' : 'Reset link'} sent to ${email}`);
+    toast(isVerify ? tr('Verification email sent to {email}', { email }) : tr('Reset link sent to {email}', { email }));
   }, say);
 };
 A.verified = () =>
@@ -174,10 +192,10 @@ A.verified = () =>
       if (err.code === 'NEEDS_LOGIN') {
         S.ui.errors = {};
         backToAuth('login');
-        toast('Email confirmed? Sign in to continue.', { kind: 'info' });
+        toast(tr('Email confirmed? Sign in to continue.'), { kind: 'info' });
       } else if (err.code === 'EMAIL_NOT_CONFIRMED') {
         backToAuth('verify');
-        toast("We haven't seen the confirmation yet. Open the link in the email first.", { kind: 'info', ms: 6000 });
+        toast(tr("We haven't seen the confirmation yet. Open the link in the email first."), { kind: 'info', ms: 6000 });
       } else {
         backToAuth('verify');
         say(err);
@@ -191,7 +209,7 @@ A.doForgot = () => {
   S.ui.af.email = em;
   S.ui.errors = {};
   if (!EMAIL_RE.test(em)) {
-    S.ui.errors.email = 'Enter the email you use to sign in';
+    S.ui.errors.email = tr('Enter the email you use to sign in');
     render();
     return;
   }
@@ -209,8 +227,8 @@ A.doReset = () => {
   const a = $('#r-pw').value,
     b = $('#r-pw2').value;
   const e = (S.ui.errors = {});
-  if (weak(a)) e.pw = PW_RULE;
-  if (a !== b) e.pw2 = "Passwords don't match";
+  if (weak(a)) e.pw = pwRule();
+  if (a !== b) e.pw2 = tr("Passwords don't match");
   if (Object.keys(e).length) {
     render();
     return;
@@ -249,7 +267,7 @@ A.onbSet = el => {
   S.ui.onbData[el.dataset.k] = el.dataset.v;
   if (el.dataset.k === 'tmpl') {
     const t = TEMPLATES.find(x => x.id === el.dataset.v);
-    if (t && !S.ui.onbData.projTouched) S.ui.onbData.proj = t.name === 'Website' ? 'Website Launch' : t.name;
+    if (t && !S.ui.onbData.projTouched) S.ui.onbData.proj = t.name === 'Website' ? tr('Website Launch') : tr(t.name);
   }
   render();
 };
@@ -276,7 +294,7 @@ IN.onbWs = el => {
   const o = S.ui.onbData;
   o.ws = el.value;
   if (!o.urlTouched)
-    o.url = el.value
+    o.url = unaccent(el.value)
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
@@ -286,7 +304,9 @@ IN.onbWs = el => {
   render();
 };
 IN.onbUrl = el => {
-  S.ui.onbData.url = el.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  S.ui.onbData.url = unaccent(el.value)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-');
   S.ui.onbData.urlTouched = true;
   checkSlug();
   render();
@@ -307,20 +327,20 @@ A.onbBack = () => {
 A.onbNext = el => {
   const o = S.ui.onbData;
   if (S.ui.onb === 1 && !o.ws.trim()) {
-    S.ui.errors.ws = 'Name your workspace to continue';
+    S.ui.errors.ws = tr('Name your workspace to continue');
     render();
     $('#o-ws')?.focus();
     return;
   }
   if (S.ui.onb === 3 && !o.proj.trim()) {
-    toast('Give your project a name', { kind: 'err' });
+    toast(tr('Give your project a name'), { kind: 'err' });
     return;
   }
   if (S.ui.onb === 4 && el.dataset.skip) o.invites = '';
   if (S.ui.onb === 4 && !el.dataset.skip) {
     const bad = (o.invites || '').split(',').filter(x => x && !EMAIL_RE.test(x));
     if (bad.length) {
-      toast(`${bad[0]} isn't a valid email address`, { kind: 'err' });
+      toast(tr("{email} isn't a valid email address", { email: bad[0] }), { kind: 'err' });
       return;
     }
   }
@@ -339,7 +359,7 @@ const TEAM_FOR_USE = { product: 'product', design: 'design', marketing: 'mkt', e
 A.onbFinish = () =>
   run('onb-finish', async () => {
     const o = S.ui.onbData;
-    const name = o.ws.trim() || 'My Workspace';
+    const name = o.ws.trim() || tr('My Workspace');
     const color = ['#2F2E2A', '#5A67D8', '#23918A', '#C54B78'][backend.ctx.workspaces.length % 4];
     try {
       await backend.createWorkspace({ name, slug: o.url, color });
@@ -366,12 +386,12 @@ A.onbFinish = () =>
       const tm = TEMPLATES.find(t => t.id === o.tmpl) || TEMPLATES[2];
       p = createProject(
         {
-          name: o.proj.trim() || tm.name,
+          name: o.proj.trim() || tr(tm.name),
           icon: tm.icon === 'file' ? 'folder' : tm.icon,
           color: 'indigo',
           team: me().team,
           lead: D().me,
-          desc: `Created during setup from the ${tm.name} template.`,
+          desc: tr('Created during setup from the {name} template.', { name: tr(tm.name) }),
         },
         tm.id,
       );
@@ -387,7 +407,7 @@ A.onbFinish = () =>
             email: e,
             role: 'Member',
             team: me().team,
-            title: 'Member',
+            title: tr('Member'),
             c: '#6B7280',
             status: 'invited',
             last: null,
@@ -398,7 +418,7 @@ A.onbFinish = () =>
     Object.assign(S.ui.onbData, { ws: '', url: '', urlOk: null, urlTouched: false, invites: '', projTouched: false });
     S.ui.auth = null;
     go('project', { id: p.id, tab: S.prefs.defaultTab });
-    toast(`Welcome to ${D().ws.name}`);
+    toast(tr('Welcome to {name}', { name: D().ws.name }));
   });
 
 /* ---------- workspaces ---------- */
@@ -407,7 +427,7 @@ A.switchWs = el => {
   S.ui.pop = null;
   if (id === backend.ctx.wsId) return render();
   backend.switchWorkspace(id).then(
-    () => toast(`Switched to ${D().ws.name}`),
+    () => toast(tr('Switched to {name}', { name: D().ws.name })),
     err => {
       S.ui.loading = false;
       render();
@@ -424,19 +444,19 @@ A.newWorkspace = () => {
 };
 A.saveWorkspace = () => {
   const n = $('#ws-name').value.trim();
-  const u = $('#ws-url')
-    .value.trim()
+  const u = unaccent($('#ws-url').value)
+    .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '');
   if (!n) {
-    toast("Workspace name can't be empty", { kind: 'err' });
+    toast(tr("Workspace name can't be empty"), { kind: 'err' });
     return;
   }
   return run('ws-save', async () => {
     try {
       if (u && u !== D().ws.url && !(await backend.slugAvailable(u))) {
-        toast(`“${u}” is already used by another workspace`, { kind: 'err' });
+        toast(tr('“{handle}” is already used by another workspace', { handle: u }), { kind: 'err' });
         return;
       }
       if (
@@ -447,7 +467,7 @@ A.saveWorkspace = () => {
           if (w) w.name = n;
         })
       )
-        toast('Workspace settings saved');
+        toast(tr('Workspace settings saved'));
     } catch (err) {
       say(err);
     }
@@ -455,9 +475,9 @@ A.saveWorkspace = () => {
 };
 A.delWorkspace = () =>
   confirmDlg({
-    title: `Delete ${D().ws.name}?`,
-    body: 'Every project, task, file, and comment in this workspace will be permanently deleted for all members. This cannot be undone.',
-    ok: 'Delete workspace',
+    title: tr('Delete {name}?', { name: D().ws.name }),
+    body: tr('Every project, task, file, and comment in this workspace will be permanently deleted for all members. This cannot be undone.'),
+    ok: tr('Delete workspace'),
     danger: true,
     typeName: D().ws.name,
     run: () => {
@@ -465,24 +485,24 @@ A.delWorkspace = () =>
       S.ui.loading = true;
       render();
       backend.deleteWorkspace().then(
-        () => toast(`${name} was deleted`, { kind: 'info', ms: 5000 }),
+        () => toast(tr('{name} was deleted', { name }), { kind: 'info', ms: 5000 }),
         err => {
           S.ui.loading = false;
           render();
-          toast(`Couldn't delete the workspace. ${backend.friendly(err)}`, { kind: 'err', ms: 6000 });
+          toast(tr("Couldn't delete the workspace. {reason}", { reason: backend.friendly(err) }), { kind: 'err', ms: 6000 });
         },
       );
     },
   });
-A.copyInviteLink = () => copy(`${location.origin}${location.pathname}#signup`, 'Sign-up link copied');
+A.copyInviteLink = () => copy(`${location.origin}${location.pathname}#signup`, tr('Sign-up link copied'));
 
 /* ---------- connection ---------- */
 A.retryOnline = el => {
   el.classList.add('is-loading');
   backend.retryConnection().then(ok => {
     el.classList.remove('is-loading');
-    if (ok) toast('Reconnected. All changes are saved.');
-    else toast("Still can't reach the server.", { kind: 'err' });
+    if (ok) toast(tr('Reconnected. All changes are saved.'));
+    else toast(tr("Still can't reach the server."), { kind: 'err' });
   });
 };
 A.retryBoot = () => location.reload();
@@ -494,9 +514,9 @@ A.savePassword = () => {
     nw = $('#pw-new').value,
     cf = $('#pw-conf').value;
   S.ui.pwDone = false;
-  if (!cur) e.pwCur = 'Enter your current password';
-  if (weak(nw)) e.pwNew = PW_RULE;
-  if (nw !== cf) e.pwConf = "Passwords don't match";
+  if (!cur) e.pwCur = tr('Enter your current password');
+  if (weak(nw)) e.pwNew = pwRule();
+  if (nw !== cf) e.pwConf = tr("Passwords don't match");
   if (Object.keys(e).length) {
     render();
     return;
@@ -507,7 +527,7 @@ A.savePassword = () => {
       S.ui.pwDone = true;
       S.ui.pwNew = '';
       render();
-      toast('Password updated');
+      toast(tr('Password updated'));
     } catch (err) {
       S.ui.errors = err.code === 'INVALID_CREDENTIALS' ? { pwCur: err.message } : { pwNew: err.message };
       render();
@@ -516,10 +536,10 @@ A.savePassword = () => {
 };
 A.revokeAll = () =>
   confirmDlg({
-    title: 'Sign out of all other sessions?',
-    body: "You'll stay signed in on this device. Other browsers and devices will need to sign in again.",
-    ok: 'Sign out others',
+    title: tr('Sign out of all other sessions?'),
+    body: tr("You'll stay signed in on this device. Other browsers and devices will need to sign in again."),
+    ok: tr('Sign out others'),
     danger: true,
     icon: 'log-out',
-    run: () => backend.signOutOtherSessions().then(() => toast('Signed out of other sessions'), say),
+    run: () => backend.signOutOtherSessions().then(() => toast(tr('Signed out of other sessions')), say),
   });

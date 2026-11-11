@@ -71,6 +71,21 @@ A sessão fica no `localStorage` do navegador (gerenciada pelo supabase-js) e é
 
 Os ids são UUIDs gerados no navegador (`uid()`), o que permite criar registros sem esperar o servidor.
 
+A exceção é a **chave da tarefa** (`WEB-201`), que é decidida pelo banco para nunca repetir no workspace. O app mostra uma chave provisória no momento da criação; a resposta do insert traz a definitiva, que o motor de sincronização adota na baseline e entrega ao estado (`onServerValues` em `data/backend.js`). Na prática as duas coincidem, a não ser que outra pessoa tenha criado uma tarefa no mesmo projeto no mesmo instante. As colunas com esse comportamento são declaradas em `TABLES` (`server` e `serverOn`, em `data/mappers.js`).
+
+## Histórico de atividade
+
+Cada entrada guarda, além das referências à tarefa e ao projeto, o título da tarefa (`label`, coluna `subject`). Quando a tarefa é excluída, a entrada continua no histórico do projeto, sem link. Quando o projeto é excluído, as entradas passam a carregar o nome dele (`projectName`) e aparecem no histórico do workspace para quem podia vê-las. As exclusões são registradas pelo próprio banco, depois que a janela do "Undo" passa. As regras estão em [DATABASE.md](DATABASE.md).
+
+## Idiomas
+
+A interface existe em inglês e em português do Brasil (`core/i18n.js`). O texto em inglês é a chave: `tr('New task')` devolve a tradução quando há uma e o próprio inglês quando não há. Os dicionários ficam em `src/i18n/pt-BR/`, um arquivo por área, e `common.js` concentra o vocabulário compartilhado.
+
+- O idioma é uma preferência (`S.prefs.lang`, `'en'` ou `'pt-BR'`): vem do navegador na primeira visita, fica em cache local para valer antes do login e é gravado em `profiles.prefs`.
+- O que vai para o banco fica em inglês canônico: verbos e detalhes do histórico, texto das notificações (escrito por triggers), nomes de status, prioridades, papéis e permissões. `core/activity-text.js` e as chamadas `tr(...)` nos pontos de exibição traduzem para quem lê. Assim duas pessoas com idiomas diferentes compartilham os mesmos dados.
+- Datas do histórico são gravadas em ISO e formatadas na exibição.
+- Conteúdo criado em nome da pessoa (tarefas iniciais de um modelo, descrição padrão) nasce no idioma dela.
+
 ## Segurança
 
 - A chave usada no navegador é a **publishable key**, pública por natureza. Nenhuma chave secreta existe no front-end nem no repositório.
@@ -86,3 +101,4 @@ A estrutura original foi preservada (`core`, `ui`, `shell`, `components`, `pages
 - `core/store.js` não carrega mais dados de exemplo nem grava o workspace no `localStorage` (só preferências visuais, para aplicar o tema antes do login).
 - `actions/session.js` contém as ações que dependem do backend (login, cadastro, onboarding, workspaces, senha).
 - `data/` é novo e é o único lugar que fala com o Supabase.
+- `core/i18n.js`, `core/activity-text.js` e `src/i18n/` são novos e cuidam do idioma.
