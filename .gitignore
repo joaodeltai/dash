@@ -5,3 +5,9 @@ dist/
 __MACOSX/
 *.log
 .env*
+!.env.example
+test-results/
+playwright-report/
+coverage/
+supabase/.temp/
+supabase/.branches/
