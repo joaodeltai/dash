@@ -320,14 +320,20 @@ as $$ select coalesce(private.my_role(ws) in ('owner', 'admin'), false) $$;
 
 -- Nível de acesso do usuário atual a um projeto:
 -- 0 sem acesso · 1 ver · 2 comentar · 3 editar · 4 acesso total.
--- Visibilidade: criador, membro do projeto, ou qualquer não-convidado quando o projeto não é privado.
+-- Visibilidade: dono do workspace (sempre, para que nenhum projeto fique órfão), criador (enquanto não for
+-- convidado), membro do projeto, ou qualquer não-convidado quando o projeto não é privado.
 create function private.project_perm(pid uuid) returns integer
 language sql stable security definer set search_path = ''
 as $$
   select coalesce((
     select case
-      when not (p.created_by = (select auth.uid()) or pm.member_id is not null or (not p.is_private and m.role <> 'guest')) then 0
-      when p.lead_id = m.id or p.created_by = (select auth.uid()) or m.role in ('owner', 'admin') then 4
+      when not (
+        m.role = 'owner'
+        or (p.created_by = (select auth.uid()) and m.role <> 'guest')
+        or pm.member_id is not null
+        or (not p.is_private and m.role <> 'guest')
+      ) then 0
+      when m.role in ('owner', 'admin') or p.lead_id = m.id or (p.created_by = (select auth.uid()) and m.role <> 'guest') then 4
       when pm.permission = 'Full access' then 4
       when pm.permission = 'Can edit' then 3
       when pm.permission = 'Can comment' then 2
@@ -341,6 +347,24 @@ as $$
     where p.id = pid
   ), 0)
 $$;
+
+-- O mesmo critério de visibilidade, para um membro qualquer (usado ao entregar notificações).
+create function private.member_can_see_project(mid uuid, pid uuid) returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.projects p
+    join public.members m on m.id = mid and m.workspace_id = p.workspace_id and m.status = 'active'
+    left join public.project_members pm on pm.project_id = p.id and pm.member_id = m.id
+    where p.id = pid
+      and (m.role = 'owner' or (p.created_by = m.user_id and m.role <> 'guest') or pm.member_id is not null or (not p.is_private and m.role <> 'guest'))
+  )
+$$;
+
+create function private.in_workspace(mid uuid, ws uuid) returns boolean
+language sql stable security definer set search_path = ''
+as $$ select mid is null or exists (select 1 from public.members m where m.id = mid and m.workspace_id = ws) $$;
 
 create function private.task_perm(tid uuid) returns integer
 language sql stable security definer set search_path = ''
@@ -395,11 +419,13 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if new.project_id is not null then
-    select p.workspace_id into strict new.workspace_id from public.projects p where p.id = new.project_id;
+    begin
+      select p.workspace_id into strict new.workspace_id from public.projects p where p.id = new.project_id;
+    exception when no_data_found then
+      raise exception 'project % not found', new.project_id using errcode = '23503';
+    end;
   end if;
   return new;
-exception when no_data_found then
-  raise exception 'project % not found', new.project_id using errcode = '23503';
 end
 $$;
 
@@ -407,10 +433,12 @@ create function private.set_ws_from_task() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
-  select t.workspace_id into strict new.workspace_id from public.tasks t where t.id = new.task_id;
+  begin
+    select t.workspace_id into strict new.workspace_id from public.tasks t where t.id = new.task_id;
+  exception when no_data_found then
+    raise exception 'task % not found', new.task_id using errcode = '23503';
+  end;
   return new;
-exception when no_data_found then
-  raise exception 'task % not found', new.task_id using errcode = '23503';
 end
 $$;
 
@@ -418,10 +446,119 @@ create function private.set_ws_from_member() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
-  select m.workspace_id into strict new.workspace_id from public.members m where m.id = new.member_id;
+  begin
+    select m.workspace_id into strict new.workspace_id from public.members m where m.id = new.member_id;
+  exception when no_data_found then
+    raise exception 'member % not found', new.member_id using errcode = '23503';
+  end;
   return new;
-exception when no_data_found then
-  raise exception 'member % not found', new.member_id using errcode = '23503';
+end
+$$;
+
+-- Referências a pessoas e times precisam ser do mesmo workspace da linha (as FKs sozinhas não garantem isso).
+-- Roda depois dos triggers *_set_ws (ordem alfabética do nome), quando workspace_id já é o do pai.
+create function private.check_same_workspace() returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  ok boolean := true;
+begin
+  case tg_table_name
+    when 'tasks' then ok := private.in_workspace(new.assignee_id, new.workspace_id);
+    when 'subtasks' then ok := private.in_workspace(new.assignee_id, new.workspace_id);
+    when 'projects' then
+      ok := private.in_workspace(new.lead_id, new.workspace_id)
+        and (new.team_id is null or exists (select 1 from public.teams t where t.id = new.team_id and t.workspace_id = new.workspace_id));
+    when 'project_members' then ok := private.in_workspace(new.member_id, new.workspace_id);
+    when 'members' then
+      ok := new.team_id is null or exists (select 1 from public.teams t where t.id = new.team_id and t.workspace_id = new.workspace_id);
+    when 'task_dependencies' then
+      ok := exists (select 1 from public.tasks t where t.id = new.depends_on_id and t.workspace_id = new.workspace_id);
+    when 'files' then
+      ok := new.task_id is null or exists (select 1 from public.tasks t where t.id = new.task_id and t.project_id = new.project_id);
+    when 'task_favorites' then ok := private.in_workspace(new.member_id, new.workspace_id);
+    when 'project_favorites' then ok := private.in_workspace(new.member_id, new.workspace_id);
+    else ok := true;
+  end case;
+  if not ok then
+    raise exception 'referenced record belongs to another workspace' using errcode = '23514';
+  end if;
+  return new;
+end
+$$;
+
+-- Atividade: projeto e workspace vêm da tarefa (ou do projeto) a que o registro se refere.
+create function private.set_activity_refs() returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+begin
+  if new.task_id is not null then
+    begin
+      select t.project_id, t.workspace_id into strict new.project_id, new.workspace_id from public.tasks t where t.id = new.task_id;
+    exception when no_data_found then
+      raise exception 'task % not found', new.task_id using errcode = '23503';
+    end;
+  elsif new.project_id is not null then
+    begin
+      select p.workspace_id into strict new.workspace_id from public.projects p where p.id = new.project_id;
+    exception when no_data_found then
+      raise exception 'project % not found', new.project_id using errcode = '23503';
+    end;
+  end if;
+  return new;
+end
+$$;
+
+-- Autoria não é escolhida pelo cliente: quem cria é o usuário da sessão, e isso não muda depois.
+create function private.stamp_author() returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  uid uuid := (select auth.uid());
+begin
+  if uid is null then return new; end if; -- manutenção direta no banco (sem sessão de usuário)
+  if tg_table_name = 'files' then
+    -- em update só é aceito limpar o valor (é o que a FK faz quando o membro é apagado)
+    if tg_op = 'INSERT' then new.uploaded_by := private.my_member_id(new.workspace_id);
+    elsif new.uploaded_by is not null then new.uploaded_by := old.uploaded_by; end if;
+  else
+    if tg_op = 'INSERT' then new.created_by := uid;
+    elsif new.created_by is not null then new.created_by := old.created_by; end if;
+  end if;
+  return new;
+end
+$$;
+
+-- Projetos: o workspace não muda; líder e privacidade só mudam por quem tem acesso total.
+create function private.guard_project_update() returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+begin
+  if new.workspace_id is distinct from old.workspace_id then
+    raise exception 'a project cannot be moved to another workspace' using errcode = '42501';
+  end if;
+  if (select auth.uid()) is null then return new; end if;
+  -- líder apagado do workspace: a FK limpa o campo, sem exigir permissão de quem removeu o membro
+  if new.lead_id is null and old.lead_id is not null and new.is_private is not distinct from old.is_private
+     and not exists (select 1 from public.members m where m.id = old.lead_id) then
+    return new;
+  end if;
+  if (new.lead_id is distinct from old.lead_id or new.is_private is distinct from old.is_private) and private.project_perm(old.id) < 4 then
+    raise exception 'only people with full access can change the project lead or privacy' using errcode = '42501';
+  end if;
+  return new;
+end
+$$;
+
+-- Conta apagada: a pessoa deixa de ser membro ativo (a linha fica para preservar autoria e histórico).
+create function private.member_account_removed() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if old.user_id is not null and new.user_id is null then
+    new.status := 'deactivated';
+  end if;
+  return new;
 end
 $$;
 
@@ -436,6 +573,27 @@ create trigger task_dependencies_set_ws before insert or update of task_id, work
 create trigger comments_set_ws before insert or update of task_id, workspace_id on public.comments for each row execute function private.set_ws_from_task();
 create trigger task_favorites_set_ws before insert or update of task_id, workspace_id on public.task_favorites for each row execute function private.set_ws_from_task();
 create trigger member_state_set_ws before insert or update of member_id, workspace_id on public.member_state for each row execute function private.set_ws_from_member();
+create trigger task_favorites_z_same_ws before insert or update on public.task_favorites for each row execute function private.check_same_workspace();
+create trigger project_favorites_z_same_ws before insert or update on public.project_favorites for each row execute function private.check_same_workspace();
+
+-- nomes começam com "z" para rodar depois dos triggers *_set_ws
+create trigger tasks_z_same_ws before insert or update on public.tasks for each row execute function private.check_same_workspace();
+create trigger subtasks_z_same_ws before insert or update on public.subtasks for each row execute function private.check_same_workspace();
+create trigger projects_z_same_ws before insert or update on public.projects for each row execute function private.check_same_workspace();
+create trigger project_members_z_same_ws before insert or update on public.project_members for each row execute function private.check_same_workspace();
+create trigger members_z_same_ws before insert or update on public.members for each row execute function private.check_same_workspace();
+create trigger task_dependencies_z_same_ws before insert or update on public.task_dependencies for each row execute function private.check_same_workspace();
+create trigger files_z_same_ws before insert or update on public.files for each row execute function private.check_same_workspace();
+
+create trigger projects_stamp before insert or update on public.projects for each row execute function private.stamp_author();
+create trigger tasks_stamp before insert or update on public.tasks for each row execute function private.stamp_author();
+create trigger events_stamp before insert or update on public.events for each row execute function private.stamp_author();
+create trigger saved_views_stamp before insert or update on public.saved_views for each row execute function private.stamp_author();
+create trigger files_z_stamp before insert or update on public.files for each row execute function private.stamp_author();
+
+create trigger projects_guard before update on public.projects for each row execute function private.guard_project_update();
+create trigger activity_set_refs before insert on public.activity for each row execute function private.set_activity_refs();
+create trigger members_account_removed before update of user_id on public.members for each row execute function private.member_account_removed();
 
 -- Membros: o próprio membro edita seus dados de exibição; papel, status e vínculo de conta
 -- só mudam por admin (e a posse do workspace não muda pela API).
@@ -484,6 +642,11 @@ begin
   if new.team_id is distinct from old.team_id and not private.can_write(new.workspace_id) then
     raise exception 'not allowed to change teams' using errcode = '42501';
   end if;
+  -- Nome, cargo, cor e fuso são do próprio membro (ou de um admin); os demais só mexem na alocação de time.
+  if not admin and old.user_id is distinct from (select auth.uid())
+     and (new.name, new.title, new.color, new.timezone) is distinct from (old.name, old.title, old.color, old.timezone) then
+    raise exception 'not allowed to edit another member' using errcode = '42501';
+  end if;
   new.last_seen_at := old.last_seen_at;
   new.invited_by := old.invited_by;
   return new;
@@ -497,6 +660,10 @@ language plpgsql security definer set search_path = ''
 as $$
 begin
   if (select auth.uid()) is null then return new; end if;
+  -- o próprio banco limpa a autoria quando o membro é apagado (FK on delete set null)
+  if new.author_id is null and old.author_id is not null and not exists (select 1 from public.members m where m.id = old.author_id) then
+    return new;
+  end if;
   if new.task_id is distinct from old.task_id or new.author_id is distinct from old.author_id or new.created_at is distinct from old.created_at then
     raise exception 'comment task, author and date cannot be changed' using errcode = '42501';
   end if;
@@ -532,7 +699,8 @@ begin
   from public.members m
   join public.profiles p on p.id = m.user_id
   where m.id = recipient and m.workspace_id = ws and m.status = 'active'
-    and coalesce(p.notif_prefs ->> ('inapp_' || kind), 'true') <> 'false';
+    and coalesce(p.notif_prefs ->> ('inapp_' || kind), 'true') <> 'false'
+    and (pid is null or private.member_can_see_project(m.id, pid));
 end
 $$;
 
@@ -730,7 +898,8 @@ grant execute on function public.touch_presence(uuid) to authenticated;
 -- ---------------------------------------------------------------------
 
 revoke all on all tables in schema public from anon, authenticated;
-grant select, update on public.profiles to authenticated;
+grant select on public.profiles to authenticated;
+grant update (full_name, prefs, notif_prefs) on public.profiles to authenticated;
 grant select, update, delete on public.workspaces to authenticated;
 grant select, insert, update, delete on
   public.teams, public.members, public.member_state, public.projects, public.project_members, public.tasks,
@@ -799,9 +968,12 @@ create policy teams_delete on public.teams for delete to authenticated using (pr
 
 -- projects
 create policy projects_select on public.projects for select to authenticated
-  using (private.is_member(workspace_id) and (created_by = (select auth.uid()) or private.project_perm(id) >= 1));
+  using (
+    private.is_member(workspace_id)
+    and ((created_by = (select auth.uid()) and private.my_role(workspace_id) <> 'guest') or private.project_perm(id) >= 1)
+  );
 create policy projects_insert on public.projects for insert to authenticated
-  with check (private.can_write(workspace_id) and created_by = (select auth.uid()));
+  with check (private.can_write(workspace_id));
 create policy projects_update on public.projects for update to authenticated
   using (private.project_perm(id) >= 3) with check (private.project_perm(id) >= 3);
 create policy projects_delete on public.projects for delete to authenticated using (private.project_perm(id) >= 4);
@@ -809,12 +981,14 @@ create policy projects_delete on public.projects for delete to authenticated usi
 -- project_members
 create policy project_members_select on public.project_members for select to authenticated
   using (project_id in (select p.id from public.projects p));
+-- Quem edita o projeto pode adicionar pessoas com a permissão padrão; conceder uma permissão explícita,
+-- alterá-la ou remover outra pessoa exige acesso total. Cada um pode sair do projeto.
 create policy project_members_insert on public.project_members for insert to authenticated
-  with check (private.project_perm(project_id) >= 3);
+  with check (private.project_perm(project_id) >= 4 or (private.project_perm(project_id) >= 3 and permission is null));
 create policy project_members_update on public.project_members for update to authenticated
-  using (private.project_perm(project_id) >= 3) with check (private.project_perm(project_id) >= 3);
+  using (private.project_perm(project_id) >= 4) with check (private.project_perm(project_id) >= 4);
 create policy project_members_delete on public.project_members for delete to authenticated
-  using (private.project_perm(project_id) >= 3);
+  using (private.project_perm(project_id) >= 4 or member_id = private.my_member_id(workspace_id));
 
 -- tasks
 create policy tasks_select on public.tasks for select to authenticated
@@ -865,7 +1039,7 @@ create policy comments_delete on public.comments for delete to authenticated
 create policy activity_select on public.activity for select to authenticated
   using (private.is_member(workspace_id) and (project_id is null or project_id in (select p.id from public.projects p)));
 create policy activity_insert on public.activity for insert to authenticated
-  with check (actor_id = private.my_member_id(workspace_id) and (project_id is null or private.project_perm(project_id) >= 1));
+  with check (actor_id = private.my_member_id(workspace_id) and (project_id is null or private.project_perm(project_id) >= 2));
 
 -- notifications: só o destinatário.
 create policy notifications_select on public.notifications for select to authenticated
@@ -886,13 +1060,13 @@ create policy events_update on public.events for update to authenticated
 create policy events_delete on public.events for delete to authenticated
   using (private.can_write(workspace_id) and (project_id is null or private.project_perm(project_id) >= 3));
 
--- saved_views: compartilhadas entre quem vê o projeto.
+-- saved_views: compartilhadas entre quem vê o projeto; alteradas por quem pode editá-lo.
 create policy saved_views_select on public.saved_views for select to authenticated
   using (project_id in (select p.id from public.projects p));
-create policy saved_views_insert on public.saved_views for insert to authenticated with check (private.project_perm(project_id) >= 1);
+create policy saved_views_insert on public.saved_views for insert to authenticated with check (private.project_perm(project_id) >= 3);
 create policy saved_views_update on public.saved_views for update to authenticated
-  using (private.project_perm(project_id) >= 1) with check (private.project_perm(project_id) >= 1);
-create policy saved_views_delete on public.saved_views for delete to authenticated using (private.project_perm(project_id) >= 1);
+  using (private.project_perm(project_id) >= 3) with check (private.project_perm(project_id) >= 3);
+create policy saved_views_delete on public.saved_views for delete to authenticated using (private.project_perm(project_id) >= 3);
 
 -- favoritos: pessoais.
 create policy task_favorites_all on public.task_favorites for all to authenticated
