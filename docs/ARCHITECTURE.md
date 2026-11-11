@@ -37,7 +37,7 @@ Consequências práticas:
 - **Desfazer funciona**: exclusões esperam alguns segundos antes de ir ao banco (`DELETE_HOLD_MS`). O "Undo" restaura o estado anterior e a exclusão simplesmente deixa de existir no diff. Ao esconder ou fechar a aba, tudo o que está pendente é enviado na hora.
 - **Edição concorrente** é resolvida por coluna: duas pessoas alterando campos diferentes da mesma tarefa não se sobrescrevem.
 - **Erros**: falha de rede deixa as mudanças na fila, mostra a barra "offline" e tenta de novo com espera crescente. Mudança recusada pelo banco (permissão, restrição) gera um aviso e o workspace é recarregado, descartando a edição local.
-- **Outros usuários**: eventos do Realtime disparam uma recarga do workspace, exceto quando são eco das nossas próprias gravações. A recarga nunca acontece com mudanças locais pendentes.
+- **Outros usuários**: eventos do Realtime disparam uma recarga do workspace, exceto quando são eco das nossas próprias gravações. A recarga nunca acontece com mudanças locais pendentes. Eventos de exclusão só trazem a chave primária e não podem ser filtrados por workspace com a replica identity padrão; por isso o app assina `DELETE` sem filtro por tabela e ignora chaves que não conhece (veja a seção Realtime de [DATABASE.md](DATABASE.md)).
 
 ## Fluxo de inicialização
 
@@ -53,21 +53,21 @@ A sessão fica no `localStorage` do navegador (gerenciada pelo supabase-js) e é
 
 ## Estado em memória ⇄ banco
 
-| Em memória (`S.data`) | Banco |
-|---|---|
-| `ws` | `workspaces` |
-| `members[]` (id = id do membro no workspace) | `members` |
-| `teams[]` | `teams` |
-| `projects[]` (`members`, `perms`, `private`, `milestones`, `seq`) | `projects`, `project_members` |
-| `tasks[]` (`subtasks`, `deps`, `attachments`) | `tasks`, `subtasks`, `task_dependencies`, `files` |
-| `files[]` | `files` (um registro por arquivo; anexo de tarefa = `task_id` preenchido) |
-| `comments[]` (`re` = reações) | `comments` |
-| `activity[]` | `activity` (somente inserção) |
-| `notifs[]` | `notifications` (criadas por triggers; o cliente só marca como lida) |
-| `events[]`, `savedViews[]` | `events`, `saved_views` |
-| `fav` em tarefa/projeto | `task_favorites`, `project_favorites` (pessoal) |
-| `projOrder`, `recentSearches`, `S.views` | `member_state.state` (pessoal) |
-| `S.prefs`, `notifPrefs` | `profiles.prefs`, `profiles.notif_prefs` (pessoal) |
+| Em memória (`S.data`)                                             | Banco                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `ws`                                                              | `workspaces`                                                              |
+| `members[]` (id = id do membro no workspace)                      | `members`                                                                 |
+| `teams[]`                                                         | `teams`                                                                   |
+| `projects[]` (`members`, `perms`, `private`, `milestones`, `seq`) | `projects`, `project_members`                                             |
+| `tasks[]` (`subtasks`, `deps`, `attachments`)                     | `tasks`, `subtasks`, `task_dependencies`, `files`                         |
+| `files[]`                                                         | `files` (um registro por arquivo; anexo de tarefa = `task_id` preenchido) |
+| `comments[]` (`re` = reações)                                     | `comments`                                                                |
+| `activity[]`                                                      | `activity` (somente inserção)                                             |
+| `notifs[]`                                                        | `notifications` (criadas por triggers; o cliente só marca como lida)      |
+| `events[]`, `savedViews[]`                                        | `events`, `saved_views`                                                   |
+| `fav` em tarefa/projeto                                           | `task_favorites`, `project_favorites` (pessoal)                           |
+| `projOrder`, `recentSearches`, `S.views`                          | `member_state.state` (pessoal)                                            |
+| `S.prefs`, `notifPrefs`                                           | `profiles.prefs`, `profiles.notif_prefs` (pessoal)                        |
 
 Os ids são UUIDs gerados no navegador (`uid()`), o que permite criar registros sem esperar o servidor.
 
@@ -76,7 +76,7 @@ Os ids são UUIDs gerados no navegador (`uid()`), o que permite criar registros 
 - A chave usada no navegador é a **publishable key**, pública por natureza. Nenhuma chave secreta existe no front-end nem no repositório.
 - Todas as tabelas têm **RLS**. O papel `anon` não tem privilégio algum. Detalhes das regras em [DATABASE.md](DATABASE.md).
 - Funções `security definer` ficam no schema `private`, que não é exposto pela API.
-- Notificações, vínculo de convites e criação de workspace acontecem no banco, não no cliente.
+- Notificações, vínculo de convites e criação de workspace acontecem no banco, não no cliente. Autoria (`created_by`, `uploaded_by`) também é carimbada por trigger, e referências entre workspaces são rejeitadas pelo banco.
 - O HTML da descrição de tarefas é sanitizado antes de ser exibido.
 
 ## Camadas do front-end

@@ -2,8 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -17,4 +24,12 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
+      # Testes unitários: sem rede e sem Supabase.
+      # Os testes de integração (npm run test:integration) dependem de Docker e do Supabase local e rodam apenas na máquina de quem desenvolve.
+      - run: npm test
       - run: npm run build
+        env:
+          # PLACEHOLDERS DE CI: valores fictícios, só para o build ter as variáveis que o app exige.
+          # Não apontam para nenhum projeto Supabase e não são segredos. Os valores reais ficam nas variáveis de ambiente da Vercel.
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder_not_a_real_key
