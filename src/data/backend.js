@@ -5,7 +5,7 @@
 import { AUTH_PROVIDERS, MAX_FILE_BYTES, SUPABASE_KEY, SUPABASE_URL, ctx, isConfigured, sb, urlIntent } from './supabase.js';
 import { TABLE, emptyData, flatten, fmtBytes, hydrate, keyOf, newId, stable } from './mappers.js';
 import { createSync } from './sync.js';
-import { S, cachePrefs, mergePrefs, setPersist, task } from '../core/store.js';
+import { S, cachePrefs, company, contact, deal, mergePrefs, sequence, setPersist, task } from '../core/store.js';
 import { tr } from '../core/i18n.js';
 import { fileType } from '../ui/helpers.js';
 import { toast } from '../ui/toast.js';
@@ -331,6 +331,7 @@ async function fetchRows(wsId) {
     fetchAll('task_favorites', inWs),
     fetchAll('project_favorites', inWs),
   ]);
+  const crm = await fetchCrm(wsId);
   const mine = members.find(m => m.user_id === ctx.userId && m.status === 'active');
   if (!mine) throw new BackendError(tr('You are no longer a member of this workspace.'), { code: 'NOT_A_MEMBER', kind: 'rejected' });
   const member_state = unwrap(await sb.from('member_state').select('*').eq('member_id', mine.id).maybeSingle());
@@ -357,8 +358,41 @@ async function fetchRows(wsId) {
       task_favorites,
       project_favorites,
       member_state: member_state || { state: {} },
+      ...crm.rows,
+      crmReady: crm.ready,
     },
   };
+}
+
+/* CRM tables ship in a later migration. Until it is applied, a missing relation must not
+   take the rest of the workspace down with it. */
+const CRM_TABLES = [
+  ['crm_stages', ['position', 'id']],
+  ['crm_companies', ['name', 'id']],
+  ['crm_contacts', ['name', 'id']],
+  ['crm_deals', ['created_at', 'id']],
+  ['crm_activities', ['occurred_at', 'id']],
+  ['crm_sequences', ['name', 'id']],
+  ['crm_sequence_steps', ['position', 'id']],
+  ['crm_sequence_enrollments', ['created_at', 'id']],
+];
+function missingTable(err) {
+  const code = err?.code || '';
+  const msg = String(err?.message || '');
+  return code === '42P01' || code === 'PGRST205' || /could not find the table/i.test(msg) || /does not exist/i.test(msg);
+}
+async function fetchCrm(wsId) {
+  const inWs = q => q.eq('workspace_id', wsId);
+  const empty = Object.fromEntries(CRM_TABLES.map(([name]) => [name, []]));
+  try {
+    const lists = await Promise.all(CRM_TABLES.map(([name, order]) => fetchAll(name, inWs, order)));
+    const rows = Object.fromEntries(CRM_TABLES.map(([name], i) => [name, lists[i]]));
+    return { ready: true, rows };
+  } catch (err) {
+    if (!missingTable(err)) throw err;
+    console.warn('[crm] schema not installed yet; the pipeline stays hidden until the migration is applied.');
+    return { ready: false, rows: empty };
+  }
 }
 
 /* Puts freshly fetched rows in memory and makes them the new sync baseline. */
@@ -376,6 +410,11 @@ function applyRows({ mine, rows }, wsId) {
   cachePrefs();
   sync.setBaseline(flatten(stateOf(), ctx));
   if (S.ui.drawer && !task(S.ui.drawer)) S.ui.drawer = null;
+  if (S.ui.deal && !deal(S.ui.deal)) S.ui.deal = null;
+  const rec = S.ui.crmRecord;
+  if (rec && rec.kind === 'company' && !company(rec.id)) S.ui.crmRecord = null;
+  if (rec && rec.kind === 'contact' && !contact(rec.id)) S.ui.crmRecord = null;
+  if (rec && rec.kind === 'sequence' && !sequence(rec.id)) S.ui.crmRecord = null;
 }
 
 let lastPull = 0;
@@ -395,7 +434,7 @@ export async function openWorkspace(wsId, { route } = {}) {
   } catch {
     /* storage blocked: the workspace choice just won't be remembered */
   }
-  subscribe(wsId);
+  subscribe(wsId, { crm: loaded.rows.crmReady !== false });
   void sb.rpc('touch_presence', { ws: wsId });
   Object.assign(S.ui, {
     booting: false,
@@ -514,12 +553,20 @@ const RT_TABLES = [
   'notifications',
   'events',
   'saved_views',
+  'crm_stages',
+  'crm_companies',
+  'crm_contacts',
+  'crm_deals',
+  'crm_activities',
+  'crm_sequences',
+  'crm_sequence_steps',
+  'crm_sequence_enrollments',
 ];
 let channel = null;
 let rtQueue = [];
 let rtTimer = null;
 
-function subscribe(wsId) {
+function subscribe(wsId, { crm = true } = {}) {
   unsubscribe();
   channel = sb.channel('ws:' + wsId);
   const queue = table => payload => {
@@ -527,7 +574,8 @@ function subscribe(wsId) {
     clearTimeout(rtTimer);
     rtTimer = setTimeout(drainRealtime, 700);
   };
-  for (const table of RT_TABLES) {
+  const tables = crm ? RT_TABLES : RT_TABLES.filter(t => !t.startsWith('crm_'));
+  for (const table of tables) {
     const filter = table === 'workspaces' ? `id=eq.${wsId}` : `workspace_id=eq.${wsId}`;
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter }, queue(table));
     channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table, filter }, queue(table));

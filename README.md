@@ -24,6 +24,7 @@ Este repositório não declara licença própria: nenhuma foi inventada. Este te
 - Atualização em tempo real entre pessoas e dispositivos, indicador de conexão e envio automático das alterações pendentes.
 - Interface em inglês e em português do Brasil. O idioma segue o navegador na primeira visita e pode ser trocado na tela de login e em Configurações; a escolha fica no perfil da pessoa.
 - Histórico de atividade que continua disponível depois que a tarefa ou o projeto é excluído.
+- CRM com pipeline de vendas (quadro kanban de oportunidades, empresas, contatos, cadências e métricas), em tabelas próprias para não misturar com o status das tarefas.
 
 ## Stack
 

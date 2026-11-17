@@ -8,6 +8,7 @@ import { FT, authorName, av, lbl, prPill, stPill } from '../ui/helpers.js';
 import { MAX_MB, imageState } from '../ui/file-urls.js';
 import { focusKey, render } from '../shell/render.js';
 import { teamModal } from '../features/teams.js';
+import { crmModal } from './crm-modals.js';
 
 export function openModal(m) {
   S.ui.modalOpeners = S.ui.modalOpeners || [];
@@ -55,6 +56,12 @@ export function modalHtml(m) {
       return wrap('sm', eventModal(m, H));
     case 'filePreview':
       return wrap('lg', filePreviewModal(m, H));
+    case 'deal':
+    case 'company':
+    case 'contact':
+    case 'sequence':
+    case 'lostDeal':
+      return crmModal(m, H, wrap);
     case 'saveView':
       return wrap(
         'sm',
@@ -383,6 +390,7 @@ export const SHORTCUTS = [
       ['Go to Inbox', ['G', 'I']],
       ['Go to Calendar', ['G', 'C']],
       ['Go to Settings', ['G', 'S']],
+      ['Go to CRM', ['G', 'D']],
     ],
   ],
   [

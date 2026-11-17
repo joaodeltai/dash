@@ -1,6 +1,6 @@
 # Banco de dados
 
-Este documento descreve o schema criado por `supabase/migrations/20261111044354_init_schema.sql` (a única migration até agora). Tudo aqui foi extraído da migration e conferido contra o banco local. Para a visão geral de como o app usa o banco, veja [ARCHITECTURE.md](ARCHITECTURE.md).
+Este documento descreve o schema criado pelas migrations em `supabase/migrations/`. A primeira (`20261111044354_init_schema.sql`) cria o workspace de projetos; `20261117220000_crm.sql` acrescenta o CRM. Nada disso altera as tabelas de tarefas. Para a visão geral de como o app usa o banco, veja [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Conceitos
 
@@ -294,6 +294,23 @@ Resumo por papel, nos casos comuns:
 A migration adiciona à publicação `supabase_realtime` as tabelas: `workspaces`, `teams`, `members`, `projects`, `project_members`, `tasks`, `subtasks`, `task_dependencies`, `files`, `comments`, `activity`, `notifications`, `events`, `saved_views`. Ficam de fora (pessoais): `profiles`, `member_state`, `task_favorites`, `project_favorites`.
 
 O Realtime (Postgres Changes) autoriza cada evento contra cada assinante, então as políticas RLS acima valem para inserções e atualizações. Exclusões são diferentes: a documentação do Supabase diz que o RLS não é aplicado a `DELETE` e que eventos de exclusão só podem ser filtrados com `replica identity full`. As tabelas usam a identidade padrão, então o evento de exclusão carrega só a chave primária. Por isso o app assina, em cada tabela, `INSERT` e `UPDATE` com filtro `workspace_id=eq.<id>` (`id=eq.<id>` em `workspaces`) e `DELETE` **sem filtro**. Ao receber um evento que não seja eco da própria gravação (chaves desconhecidas são ignoradas), recarrega o workspace. Efeito colateral: o navegador recebe as chaves primárias das exclusões de qualquer workspace, o que não revela conteúdo.
+
+## CRM
+
+O pipeline de vendas não reutiliza `tasks`: o status de uma tarefa só aceita `backlog`, `todo`, `progress`, `review` e `done`. O CRM tem tabelas próprias, todas com `workspace_id` e RLS. Quem lê e escreve é membro ativo com papel `owner`, `admin` ou `member` (`private.can_write`). Convidado não vê o pipeline.
+
+| Tabela | O que guarda |
+| --- | --- |
+| `crm_stages` | Etapas do workspace. O app semeia doze: Lead novo, Qualificado, Pesquisado, Abordado, Respondeu, Diagnóstico agendado, Diagnóstico feito, Proposta enviada, Negociação, Ganho, Perdido e Nutrição. O nome guardado é a chave em inglês (`New lead`, …); a tela traduz. `kind` é `open`, `won`, `lost` ou `nurture`. As etapas `new`, `won`, `lost` e `nurture` não podem ser apagadas. |
+| `crm_companies` | Empresa: nome, domínio, segmento, porte, cidade, UF, origem, notas. |
+| `crm_contacts` | Pessoa, opcionalmente ligada a uma empresa. E-mail, telefone/WhatsApp, LinkedIn. |
+| `crm_deals` | Oportunidade: título, empresa, contato principal, etapa, valor em **centavos de real** (`value_cents`), origem, intenção 0–100, responsável (membro), próximo passo e data, previsão de fechamento, motivo de perda, tags e posição. Etapa `lost` exige `lost_reason`. |
+| `crm_activities` | Linha do tempo: `email`, `whatsapp`, `linkedin`, `call`, `meeting`, `note` ou `stage_change`, com direção, texto, hora e autor. Mudar a etapa grava um `stage_change` por trigger, também quando um agente só atualiza a oportunidade. |
+| `crm_sequences`, `crm_sequence_steps`, `crm_sequence_enrollments` | Cadência de follow-up (passos e inscrição da oportunidade). O app não envia mensagem; um agente lê esse plano. |
+
+`created_by` (empresa, contato, oportunidade, cadência) é carimbado com o usuário da sessão, como nas tarefas. `created_by_agent` é um texto livre: o agente de IA coloca o próprio nome. Com o JWT de um membro valem as políticas; a service role ignora o RLS e pode gravar direto. Referências entre workspaces são rejeitadas (`23514`), inclusive contato de outra empresa.
+
+Enquanto essa migration não foi aplicada, o app abre o workspace mesmo assim e a seção CRM avisa que o schema ainda não está lá. O deploy do front-end em produção deve acontecer **depois** do `supabase db push`.
 
 ## Criar uma nova migration
 

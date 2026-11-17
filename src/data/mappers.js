@@ -40,6 +40,17 @@ export const TABLES = [
   { name: 'notifications', pk: ['id'], mode: 'update', deletable: true },
   { name: 'events', pk: ['id'], mode: 'full' },
   { name: 'saved_views', pk: ['id'], mode: 'full' },
+  // CRM: parents before the rows that point at them. Activities come after deals so a note
+  // logged in the same sync cycle as a new deal is inserted only once the deal exists.
+  // Stage changes are written by a database trigger; the client keeps a pending copy for display only.
+  { name: 'crm_stages', pk: ['id'], mode: 'full' },
+  { name: 'crm_companies', pk: ['id'], mode: 'full' },
+  { name: 'crm_sequences', pk: ['id'], mode: 'full' },
+  { name: 'crm_contacts', pk: ['id'], mode: 'full' },
+  { name: 'crm_deals', pk: ['id'], mode: 'full' },
+  { name: 'crm_sequence_steps', pk: ['id'], mode: 'full' },
+  { name: 'crm_activities', pk: ['id'], mode: 'full' },
+  { name: 'crm_sequence_enrollments', pk: ['id'], mode: 'full' },
   { name: 'task_favorites', pk: ['member_id', 'task_id'], mode: 'full' },
   { name: 'project_favorites', pk: ['member_id', 'project_id'], mode: 'full' },
 ];
@@ -52,6 +63,12 @@ const PSTATUS = ['planning', 'active', 'risk', 'hold', 'complete'];
 const RECUR = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly'];
 const PERMS = ['Can view', 'Can comment', 'Can edit', 'Full access'];
 const NOTIF_TYPES = ['mention', 'assign', 'comment', 'update'];
+const CRM_KINDS = ['open', 'won', 'lost', 'nurture'];
+const CRM_COLORS = ['gray', 'blue', 'violet', 'teal', 'amber', 'orange', 'rose', 'green', 'red'];
+const CRM_ACT = ['email', 'whatsapp', 'linkedin', 'call', 'meeting', 'note', 'stage_change'];
+const CRM_DIR = ['inbound', 'outbound', 'internal'];
+const CRM_CHANNEL = ['email', 'whatsapp', 'linkedin', 'call'];
+const CRM_ENROLL = ['active', 'paused', 'done'];
 const ROLE_UP = { owner: 'Owner', admin: 'Admin', member: 'Member', guest: 'Guest' };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -90,6 +107,44 @@ export function parseBytes(label) {
   const mult = { B: 1, KB: 1024, MB: 1048576, GB: 1073741824 }[m[2].toUpperCase()];
   return Math.round(parseFloat(m[1]) * mult);
 }
+const domainOf = v =>
+  str(v, 253)
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .replace(/\.$/, '')
+    .slice(0, 253);
+const linkOf = v => {
+  const s = str(v, 500).trim();
+  if (!s) return '';
+  return (/^https?:\/\//i.test(s) ? s : 'https://' + s).slice(0, 500);
+};
+const scoreOf = v => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+};
+const centsOf = v => {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 100000000000000);
+};
+const tagsOf = v => {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(v) ? v : []) {
+    const t = String(raw ?? '')
+      .trim()
+      .slice(0, 32);
+    const key = t.toLowerCase();
+    if (!t || seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length === 16) break;
+  }
+  return out;
+};
 
 /* ---------- empty workspace ---------- */
 export function emptyData() {
@@ -106,6 +161,14 @@ export function emptyData() {
     notifs: [],
     files: [],
     events: [],
+    crmStages: [],
+    companies: [],
+    contacts: [],
+    deals: [],
+    crmActivities: [],
+    sequences: [],
+    enrollments: [],
+    crmReady: true,
     projOrder: [],
     savedViews: [],
     recentSearches: [],
@@ -117,7 +180,8 @@ export function emptyData() {
    hydrate: database rows → S.data
    rows: { workspace, members, teams, projects, project_members, tasks, subtasks, task_dependencies, files,
            comments, activity, notifications, events, saved_views, task_favorites, project_favorites,
-           member_state, profile }
+           member_state, profile, crm_stages, crm_companies, crm_contacts, crm_deals, crm_activities,
+           crm_sequences, crm_sequence_steps, crm_sequence_enrollments, crmReady }
    ctx:  { wsId, meId, userId, workspaces }
    ===================================================================== */
 export function hydrate(rows, ctx) {
@@ -274,6 +338,103 @@ export function hydrate(rows, ctx) {
       created: toMs(v.created_at) || 0,
     }));
 
+  d.crmReady = rows.crmReady !== false;
+  d.crmStages = [...(rows.crm_stages || [])]
+    .sort((a, b) => a.position - b.position || String(a.slug).localeCompare(String(b.slug)))
+    .map(s => ({ id: s.id, slug: s.slug, name: s.name, kind: s.kind, position: s.position, color: s.color || 'gray' }));
+  d.companies = [...(rows.crm_companies || [])]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    .map(c => ({
+      id: c.id,
+      name: c.name,
+      domain: c.domain || '',
+      segment: c.segment || '',
+      size: c.size || '',
+      city: c.city || '',
+      state: c.state || '',
+      source: c.source || '',
+      notes: c.notes || '',
+      agent: c.created_by_agent || '',
+      created: toMs(c.created_at) || 0,
+      updated: toMs(c.updated_at) || 0,
+    }));
+  d.contacts = [...(rows.crm_contacts || [])]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    .map(c => ({
+      id: c.id,
+      company: c.company_id || null,
+      name: c.name,
+      role: c.role || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      linkedin: c.linkedin || '',
+      notes: c.notes || '',
+      agent: c.created_by_agent || '',
+      created: toMs(c.created_at) || 0,
+      updated: toMs(c.updated_at) || 0,
+    }));
+  d.deals = (rows.crm_deals || []).map(deal => ({
+    id: deal.id,
+    title: deal.title,
+    company: deal.company_id || null,
+    contact: deal.contact_id || null,
+    stage: deal.stage_id,
+    value: Number(deal.value_cents) || 0,
+    source: deal.source || '',
+    intent: Number(deal.intent_score) || 0,
+    owner: deal.owner_id || null,
+    nextStep: deal.next_step || '',
+    nextOn: deal.next_step_on || null,
+    closeOn: deal.expected_close || null,
+    lostReason: deal.lost_reason || '',
+    tags: deal.tags || [],
+    order: Number(deal.position) || 0,
+    agent: deal.created_by_agent || '',
+    wonAt: toMs(deal.won_at),
+    lostAt: toMs(deal.lost_at),
+    created: toMs(deal.created_at) || 0,
+    updated: toMs(deal.updated_at) || 0,
+  }));
+  d.crmActivities = [...(rows.crm_activities || [])]
+    .sort((a, b) => (toMs(b.occurred_at) || 0) - (toMs(a.occurred_at) || 0))
+    .map(a => ({
+      id: a.id,
+      deal: a.deal_id,
+      company: a.company_id || null,
+      contact: a.contact_id || null,
+      type: a.type,
+      direction: a.direction || 'internal',
+      content: a.content || '',
+      at: toMs(a.occurred_at) || 0,
+      by: a.author_id || null,
+      agent: a.created_by_agent || '',
+      meta: a.meta && typeof a.meta === 'object' ? a.meta : {},
+    }));
+  const stepsBy = groupBy(rows.crm_sequence_steps || [], 'sequence_id');
+  d.sequences = [...(rows.crm_sequences || [])]
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+    .map(s => ({
+      id: s.id,
+      name: s.name,
+      desc: s.description || '',
+      active: !!s.active,
+      agent: s.created_by_agent || '',
+      created: toMs(s.created_at) || 0,
+      updated: toMs(s.updated_at) || 0,
+      steps: (stepsBy[s.id] || [])
+        .sort((a, b) => a.position - b.position)
+        .map(step => ({ id: step.id, channel: step.channel, delay: step.delay_days || 0, body: step.body || '' })),
+    }));
+  d.enrollments = (rows.crm_sequence_enrollments || []).map(e => ({
+    id: e.id,
+    sequence: e.sequence_id,
+    deal: e.deal_id,
+    status: e.status,
+    step: e.step_index || 0,
+    nextOn: e.next_on || null,
+    agent: e.created_by_agent || '',
+  }));
+
   const st = rows.member_state?.state || {};
   d.projOrder = Array.isArray(st.projOrder) ? st.projOrder.filter(x => typeof x === 'string') : [];
   d.recentSearches = Array.isArray(st.recentSearches) ? st.recentSearches.filter(x => typeof x === 'string').slice(0, 5) : [];
@@ -312,7 +473,27 @@ function groupBy(list, key) {
    SET NULL). Runs before every diff; it is idempotent.
    ===================================================================== */
 export function normalize(d) {
-  for (const k of ['members', 'teams', 'projects', 'tasks', 'comments', 'activity', 'notifs', 'files', 'events', 'savedViews', 'projOrder', 'recentSearches'])
+  for (const k of [
+    'members',
+    'teams',
+    'projects',
+    'tasks',
+    'comments',
+    'activity',
+    'notifs',
+    'files',
+    'events',
+    'savedViews',
+    'projOrder',
+    'recentSearches',
+    'crmStages',
+    'companies',
+    'contacts',
+    'deals',
+    'crmActivities',
+    'sequences',
+    'enrollments',
+  ])
     if (!Array.isArray(d[k])) d[k] = [];
   if (!d.notifPrefs || typeof d.notifPrefs !== 'object') d.notifPrefs = {};
 
@@ -398,6 +579,35 @@ export function normalize(d) {
   }
   d.events = d.events.filter(e => !e.project || projectIds.has(e.project));
   d.savedViews = d.savedViews.filter(v => projectIds.has(v.project));
+
+  const companyIds = new Set(d.companies.map(c => c.id));
+  for (const c of d.contacts) if (c.company && !companyIds.has(c.company)) c.company = null;
+  const stageIds = new Set(d.crmStages.map(s => s.id));
+  d.deals = d.deals.filter(deal => stageIds.has(deal.stage));
+  const contactIds = new Set(d.contacts.map(c => c.id));
+  const dealIds = new Set(d.deals.map(deal => deal.id));
+  for (const deal of d.deals) {
+    if (deal.company && !companyIds.has(deal.company)) deal.company = null;
+    if (deal.contact && !contactIds.has(deal.contact)) deal.contact = null;
+    if (deal.owner && !hasMember(deal.owner)) deal.owner = null;
+    if (!Array.isArray(deal.tags)) deal.tags = [];
+  }
+  d.crmActivities = d.crmActivities.filter(a => dealIds.has(a.deal));
+  for (const a of d.crmActivities) {
+    if (!a.meta || typeof a.meta !== 'object' || Array.isArray(a.meta)) a.meta = {};
+    if (a.company && !companyIds.has(a.company)) a.company = null;
+    if (a.contact && !contactIds.has(a.contact)) a.contact = null;
+  }
+  for (const s of d.sequences) {
+    if (!Array.isArray(s.steps)) s.steps = [];
+    const seen = new Set();
+    for (const step of s.steps) {
+      if (!step.id || seen.has(step.id)) step.id = newId();
+      seen.add(step.id);
+    }
+  }
+  const sequenceIds = new Set(d.sequences.map(s => s.id));
+  d.enrollments = d.enrollments.filter(e => sequenceIds.has(e.sequence) && dealIds.has(e.deal));
 
   // projOrder decides which projects are listed at all: every project must be in it exactly once
   const order = [...new Set(d.projOrder.filter(id => projectIds.has(id)))];
@@ -580,6 +790,124 @@ export function flatten(state, ctx) {
       name: str(v.name, 80, 'View').trim() || 'View',
       type: str(v.type, 20, 'list'),
       config: cleanJson({ filters: v.filters || [] }),
+    });
+
+  const stageKind = new Map(d.crmStages.map(s => [s.id, s.kind]));
+  for (const s of d.crmStages)
+    put('crm_stages', {
+      id: s.id,
+      workspace_id: ws,
+      slug: slug(s.slug).replace(/-/g, '_').slice(0, 40) || 'stage',
+      name: str(s.name, 80, 'Stage').trim() || 'Stage',
+      kind: oneOf(s.kind, CRM_KINDS, 'open'),
+      position: Number.isFinite(s.position) ? Math.round(s.position) : 0,
+      color: oneOf(s.color, CRM_COLORS, 'gray'),
+    });
+  for (const c of d.companies)
+    put('crm_companies', {
+      id: c.id,
+      workspace_id: ws,
+      name: str(c.name, 160, 'Company').trim() || 'Company',
+      domain: domainOf(c.domain),
+      segment: str(c.segment, 80),
+      size: str(c.size, 20),
+      city: str(c.city, 80),
+      state: str(c.state, 8).toUpperCase(),
+      source: str(c.source, 40),
+      notes: str(c.notes, 20000),
+      created_by_agent: str(c.agent, 80),
+      created_at: toIso(c.created) || toIso(0),
+      updated_at: toIso(c.updated) || toIso(c.created) || toIso(0),
+    });
+  for (const s of d.sequences) {
+    put('crm_sequences', {
+      id: s.id,
+      workspace_id: ws,
+      name: str(s.name, 120, 'Sequence').trim() || 'Sequence',
+      description: str(s.desc, 2000),
+      active: !!s.active,
+      created_by_agent: str(s.agent, 80),
+      created_at: toIso(s.created) || toIso(0),
+      updated_at: toIso(s.updated) || toIso(s.created) || toIso(0),
+    });
+    (s.steps || []).forEach((step, i) =>
+      put('crm_sequence_steps', {
+        id: step.id,
+        sequence_id: s.id,
+        position: i,
+        channel: oneOf(step.channel, CRM_CHANNEL, 'email'),
+        delay_days: Math.max(0, Math.min(3650, Math.round(Number(step.delay) || 0))),
+        body: str(step.body, 4000),
+      }),
+    );
+  }
+  for (const c of d.contacts)
+    put('crm_contacts', {
+      id: c.id,
+      workspace_id: ws,
+      company_id: c.company || null,
+      name: str(c.name, 160, 'Contact').trim() || 'Contact',
+      role: str(c.role, 120),
+      email: str(c.email, 254).trim().toLowerCase(),
+      phone: str(c.phone, 40),
+      linkedin: linkOf(c.linkedin),
+      notes: str(c.notes, 20000),
+      created_by_agent: str(c.agent, 80),
+      created_at: toIso(c.created) || toIso(0),
+      updated_at: toIso(c.updated) || toIso(c.created) || toIso(0),
+    });
+  for (const deal of d.deals) {
+    const kind = stageKind.get(deal.stage);
+    put('crm_deals', {
+      id: deal.id,
+      workspace_id: ws,
+      title: str(deal.title, 200, 'Untitled deal').trim() || 'Untitled deal',
+      company_id: deal.company || null,
+      contact_id: deal.contact || null,
+      stage_id: deal.stage,
+      value_cents: centsOf(deal.value),
+      source: str(deal.source, 40),
+      intent_score: scoreOf(deal.intent),
+      owner_id: deal.owner || null,
+      next_step: str(deal.nextStep, 300),
+      next_step_on: dateOrNull(deal.nextOn),
+      expected_close: dateOrNull(deal.closeOn),
+      lost_reason: str(deal.lostReason, 500),
+      tags: tagsOf(deal.tags),
+      position: Number.isFinite(deal.order) ? deal.order : 0,
+      created_by_agent: str(deal.agent, 80),
+      won_at: kind === 'won' ? toIso(deal.wonAt) : null,
+      lost_at: kind === 'lost' ? toIso(deal.lostAt) : null,
+      created_at: toIso(deal.created) || toIso(0),
+      updated_at: toIso(deal.updated) || toIso(deal.created) || toIso(0),
+    });
+  }
+  for (const a of d.crmActivities) {
+    // A pending entry is only the on-screen copy of a stage change the database trigger records.
+    if (a.pending) continue;
+    put('crm_activities', {
+      id: a.id,
+      deal_id: a.deal,
+      company_id: a.company || null,
+      contact_id: a.contact || null,
+      type: oneOf(a.type, CRM_ACT, 'note'),
+      direction: oneOf(a.direction, CRM_DIR, 'internal'),
+      content: str(a.content, 20000),
+      occurred_at: toIso(a.at) || toIso(0),
+      author_id: a.by || null,
+      created_by_agent: str(a.agent, 80),
+      meta: cleanJson(a.meta && typeof a.meta === 'object' && !Array.isArray(a.meta) ? a.meta : {}),
+    });
+  }
+  for (const e of d.enrollments)
+    put('crm_sequence_enrollments', {
+      id: e.id,
+      sequence_id: e.sequence,
+      deal_id: e.deal,
+      status: oneOf(e.status, CRM_ENROLL, 'active'),
+      step_index: Math.max(0, Math.round(Number(e.step) || 0)),
+      next_on: dateOrNull(e.nextOn),
+      created_by_agent: str(e.agent, 80),
     });
 
   return out;

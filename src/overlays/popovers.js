@@ -102,7 +102,7 @@ export function popHtml(p) {
   const t = ['status', 'priority', 'assignee', 'labels', 'date', 'project', 'deps', 'recur', 'estimate'].includes(p.type) ? tgt(p) : null;
   switch (p.type) {
     case 'create':
-      inner = `<div class="mh">${tr('Create')}</div><button class="mi" data-a="newTask">${ic('circle-check', 15)}${tr('Task')}<span class="r"><kbd>N</kbd></span></button><button class="mi" data-a="newEvent">${ic('calendar-plus', 15)}${tr('Event')}</button>${canCreate() ? `<button class="mi" data-a="newProject">${ic('folder-plus', 15)}${tr('Project')}<span class="r"><kbd>P</kbd></span></button>` : ''}<button class="mi" data-a="newTeam">${ic('users', 15)}${tr('Team')}</button>${canCreate() ? `<div class="msep"></div><button class="mi" data-a="invite">${ic('user-plus', 15)}${tr('Invite member')}</button>` : ''}`;
+      inner = `<div class="mh">${tr('Create')}</div><button class="mi" data-a="newTask">${ic('circle-check', 15)}${tr('Task')}<span class="r"><kbd>N</kbd></span></button><button class="mi" data-a="newEvent">${ic('calendar-plus', 15)}${tr('Event')}</button>${canCreate() ? `<button class="mi" data-a="newDeal">${ic('handshake', 15)}${tr('Deal')}</button><button class="mi" data-a="newProject">${ic('folder-plus', 15)}${tr('Project')}<span class="r"><kbd>P</kbd></span></button>` : ''}<button class="mi" data-a="newTeam">${ic('users', 15)}${tr('Team')}</button>${canCreate() ? `<div class="msep"></div><button class="mi" data-a="invite">${ic('user-plus', 15)}${tr('Invite member')}</button>` : ''}`;
       style = 'width:220px';
       break;
     case 'subassignee': {

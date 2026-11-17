@@ -16,6 +16,7 @@ export function commands() {
   const guestHidden = canCreate() ? [] : ['c-proj', 'c-inv'];
   return [
     { id: 'c-task', name: tr('Create task'), icon: 'plus', kbd: 'N', run: () => A.newTask(document.body) },
+    { id: 'c-deal', name: tr('New deal'), icon: 'handshake', run: () => A.newDeal() },
     { id: 'c-proj', name: tr('Create project'), icon: 'folder-plus', kbd: 'P', run: () => A.newProject() },
     {
       id: 'c-search',
@@ -28,6 +29,7 @@ export function commands() {
       },
     },
     { id: 'c-home', name: tr('Go to Home'), nav: true, icon: 'house', kbd: 'G H', run: () => go('home') },
+    { id: 'c-crm', name: tr('Go to CRM'), nav: true, icon: 'handshake', kbd: 'G D', run: () => go('crm') },
     { id: 'c-inbox', name: tr('Go to Inbox'), nav: true, icon: 'inbox', kbd: 'G I', run: () => go('inbox') },
     { id: 'c-my', name: tr('Go to My Tasks'), nav: true, icon: 'circle-check', kbd: 'G T', run: () => go('mytasks') },
     { id: 'c-projs', name: tr('Go to Projects'), nav: true, icon: 'folder-kanban', kbd: 'G P', run: () => go('projects') },

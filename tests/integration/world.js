@@ -139,6 +139,34 @@ export async function buildWorld(cfg, run) {
   );
   seed.notification = query(`select id from public.notifications where workspace_id = '${ws}' and recipient_id = '${users.mem.memberId}' limit 1`)[0]?.id;
 
+  seed.stage = query(`select id from public.crm_stages where workspace_id = '${ws}' and slug = 'new'`)[0].id;
+  Object.assign(seed, { company: id(), contact: id(), deal: id(), crmActivity: id(), sequence: id(), step: id(), enrollment: id() });
+  await w(A.from('crm_companies').insert({ id: seed.company, workspace_id: ws, name: 'Seed Co', domain: 'seed.example' }), 'seed company');
+  await w(
+    A.from('crm_contacts').insert({ id: seed.contact, workspace_id: ws, company_id: seed.company, name: 'Seed Contact', email: 'seed@seed.example' }),
+    'seed contact',
+  );
+  await w(
+    A.from('crm_deals').insert({
+      id: seed.deal,
+      workspace_id: ws,
+      title: 'Seed deal',
+      stage_id: seed.stage,
+      company_id: seed.company,
+      contact_id: seed.contact,
+      owner_id: me.memberId,
+      value_cents: 10000,
+    }),
+    'seed deal',
+  );
+  await w(A.from('crm_activities').insert({ id: seed.crmActivity, deal_id: seed.deal, type: 'note', content: 'Seed note' }), 'seed crm activity');
+  await w(A.from('crm_sequences').insert({ id: seed.sequence, workspace_id: ws, name: 'Seed sequence' }), 'seed sequence');
+  await w(
+    A.from('crm_sequence_steps').insert({ id: seed.step, sequence_id: seed.sequence, position: 0, channel: 'email', delay_days: 1, body: 'oi' }),
+    'seed step',
+  );
+  await w(A.from('crm_sequence_enrollments').insert({ id: seed.enrollment, sequence_id: seed.sequence, deal_id: seed.deal }), 'seed enrollment');
+
   return { run, url: cfg.url, key: cfg.key, serviceKey: cfg.serviceKey, users, wsA: ws, wsB: wb.workspace_id, seed };
 }
 
