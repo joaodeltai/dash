@@ -25,6 +25,7 @@ import { pageWsTimeline } from '../views/timeline.js';
 import { pageSettings } from '../pages/settings.js';
 import { pageStates, pageSystem } from '../pages/design-system.js';
 import { pageArchive } from '../features/archive.js';
+import { crmTabLabel, pageCrm } from '../pages/crm.js';
 
 export function renderShell() {
   const u = S.ui;
@@ -50,6 +51,7 @@ export function renderPage() {
       notifications: pageNotifications,
       search: pageSearch,
       overview: pageOverview,
+      crm: pageCrm,
       projects: pageProjects,
       project: pageProject,
       tasks: pageTasks,
@@ -105,6 +107,7 @@ export function renderSidebar() {
       <div class="sgroup">
         <div class="sgroup-h">${tr('Workspace')}</div>
         ${sItem('overview', tr('Overview'), 'layout-dashboard')}
+        ${sItem('crm', tr('CRM'), 'handshake')}
         ${sItem('projects', tr('Projects'), 'folder-kanban')}
         ${sItem('tasks', tr('Tasks'), 'list-checks')}
         ${sItem('calendar', tr('Calendar'), 'calendar')}
@@ -183,6 +186,9 @@ export function crumbs() {
   } else if (r === 'team') {
     out.push(c(tr('Teams'), 'data-a="go" data-r="teams"'));
     out.push(c(team(u.params.id)?.name || tr('Team'), '', true));
+  } else if (r === 'crm') {
+    out.push(c(tr('CRM'), 'data-a="go" data-r="crm"', !u.params.tab || u.params.tab === 'pipeline'));
+    if (u.params.tab && u.params.tab !== 'pipeline') out.push(c(crmTabLabel(u.params.tab), '', true));
   } else if (r === 'settings') {
     out.push(c(tr('Settings'), '', true));
   } else out.push(c(tr(ROUTE_NAMES[r] || 'Not found'), '', true));

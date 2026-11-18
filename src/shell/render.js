@@ -12,6 +12,7 @@ import { tlAfter } from '../views/timeline.js';
 import { renderLayer } from '../overlays/drawer.js';
 import { placePop } from '../overlays/popovers.js';
 import { renderAuth, renderBoot } from '../pages/auth.js';
+import { crmTabLabel } from '../pages/crm.js';
 
 export const ROUTE_NAMES = {
   home: 'Home',
@@ -34,6 +35,7 @@ export const ROUTE_NAMES = {
   // internal galleries, development builds only
   ...(import.meta.env.DEV ? { system: 'Design system', states: 'System states' } : {}),
   archive: 'Archive',
+  crm: 'CRM',
 };
 export const ROUTE_ICONS = {
   home: 'house',
@@ -54,14 +56,21 @@ export const ROUTE_ICONS = {
   system: 'component',
   states: 'layers',
   archive: 'archive',
+  crm: 'handshake',
 };
 
 export function go(route, params = {}, opt = {}) {
   if (route === 'project' && !params.tab) params.tab = 'board';
+  if (route === 'crm' && !params.tab) params.tab = 'pipeline';
   if (!opt.back) S.ui.history.push({ route: S.ui.route, params: S.ui.params });
   const same = S.ui.route === route && JSON.stringify(S.ui.params) === JSON.stringify(params);
   S.ui.route = route;
   S.ui.params = params;
+  if (route === 'crm') S.ui.drawer = null;
+  else {
+    S.ui.deal = null;
+    S.ui.crmRecord = null;
+  }
   S.ui.mnav = false;
   S.ui.sel.clear();
   S.ui.pop = null;
@@ -198,6 +207,7 @@ export function pageTitle() {
   if (u.route === 'project' && proj(u.params.id)) t = `${tr((PTABS.find(x => x[0] === u.params.tab) || [0, 'Saved view'])[1])} · ${proj(u.params.id).name}`;
   if (u.route === 'member' && mem(u.params.id)) t = mem(u.params.id).name;
   if (u.route === 'team' && team(u.params.id)) t = team(u.params.id).name;
+  if (u.route === 'crm') t = `${tr('CRM')} · ${crmTabLabel(u.params.tab)}`;
   return `${t} · ${D().ws.name}`;
 }
 /* Anything clickable is keyboard-reachable: non-native [data-a] controls get a role and a tab stop. */
@@ -215,6 +225,9 @@ export function render() {
   // Entrances animate only on the render where the surface first appears.
   const fx = S.ui.fx || (S.ui.fx = {});
   if (ov.drawer && prevOv.drawer !== ov.drawer) fx.drawer = true;
+  const dealSig = S.ui.deal || (S.ui.crmRecord ? S.ui.crmRecord.kind + S.ui.crmRecord.id : '');
+  if (dealSig && dealSig !== render._deal) fx.drawer = true;
+  render._deal = dealSig;
   if (ov.modals > (prevOv.modals || 0)) fx.modal = ov.modals;
   const popSig = S.ui.pop ? [S.ui.pop.type, S.ui.pop.id, S.ui.pop.i, S.ui.pop.field, S.ui.pop.ctx, S.ui.pop.key].join('|') : '';
   if (popSig && popSig !== render._popSig) fx.pop = true;

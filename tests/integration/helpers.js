@@ -28,6 +28,14 @@ export const ALL_TABLES = [
   'saved_views',
   'task_favorites',
   'project_favorites',
+  'crm_stages',
+  'crm_companies',
+  'crm_contacts',
+  'crm_deals',
+  'crm_activities',
+  'crm_sequences',
+  'crm_sequence_steps',
+  'crm_sequence_enrollments',
 ];
 
 export const id = () => randomUUID();

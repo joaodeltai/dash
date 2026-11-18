@@ -126,6 +126,12 @@ export const me = () => D().members.find(m => m.id === D().me);
 export const mem = id => D().members.find(m => m.id === id);
 export const proj = id => D().projects.find(p => p.id === id);
 export const task = id => D().tasks.find(t => t.id === id);
+export const crmStages = () => [...(D().crmStages || [])].sort((a, b) => a.position - b.position);
+export const crmStage = id => (D().crmStages || []).find(s => s.id === id);
+export const company = id => (D().companies || []).find(c => c.id === id);
+export const contact = id => (D().contacts || []).find(c => c.id === id);
+export const deal = id => (D().deals || []).find(d => d.id === id);
+export const sequence = id => (D().sequences || []).find(s => s.id === id);
 export const pColor = p => PCOLORS[p?.color] || PCOLORS.slate;
 /* ---------- roles ----------
    The database enforces permissions (RLS); these only decide what the interface offers. */

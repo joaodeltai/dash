@@ -7,6 +7,7 @@ import { fxSet, render } from '../shell/render.js';
 import { tr, trn } from '../core/i18n.js';
 import { viewOf } from '../shell/view-engine.js';
 import { addFormFiles, applyPatch, handleFiles, updateTask } from './actions.js';
+import { dropDeal } from './crm.js';
 
 export let DRAG = null;
 const DROPZONES = '[data-dropzone],[data-dropzone-task],[data-dropzone-form],.drawer';
@@ -17,19 +18,22 @@ export function clearDropMarks() {
   $$('.dragging').forEach(x => x.classList.remove('dragging'));
 }
 document.addEventListener('dragstart', e => {
-  const card = e.target.closest?.('[data-drag-card]'),
+  const dealCard = e.target.closest?.('[data-drag-deal]'),
+    card = e.target.closest?.('[data-drag-card]'),
     row = e.target.closest?.('[data-drag-row]'),
     cal = e.target.closest?.('[data-drag-cal]'),
     sp = e.target.closest?.('[data-drag-proj]');
-  const el = card || row || cal || sp;
+  const el = dealCard || card || row || cal || sp;
   if (!el) return;
-  DRAG = card
-    ? { type: 'card', id: card.dataset.dragCard }
-    : row
-      ? { type: 'row', id: row.dataset.dragRow }
-      : cal
-        ? { type: 'cal', id: cal.dataset.dragCal }
-        : { type: 'proj', id: sp.dataset.dragProj };
+  DRAG = dealCard
+    ? { type: 'deal', id: dealCard.dataset.dragDeal }
+    : card
+      ? { type: 'card', id: card.dataset.dragCard }
+      : row
+        ? { type: 'row', id: row.dataset.dragRow }
+        : cal
+          ? { type: 'cal', id: cal.dataset.dragCal }
+          : { type: 'proj', id: sp.dataset.dragProj };
   e.dataTransfer.effectAllowed = 'move';
   try {
     e.dataTransfer.setData('text/plain', DRAG.id);
@@ -63,7 +67,29 @@ document.addEventListener('dragover', e => {
     return;
   }
   if (!DRAG) return;
-  if (DRAG.type === 'card') {
+  if (DRAG.type === 'deal') {
+    const col = e.target.closest('[data-drop-stage]');
+    if (!col) return;
+    e.preventDefault();
+    $$('.bcol.over').forEach(x => x !== col && x.classList.remove('over'));
+    col.classList.add('over');
+    const body = col.querySelector('[data-stage-body]');
+    if (!body) return;
+    const cards = [...body.querySelectorAll('.dealcard:not(.dragging)')];
+    const after = cards.find(c => {
+      const r = c.getBoundingClientRect();
+      return e.clientY < r.top + r.height / 2;
+    });
+    let line = $('.drop-line');
+    if (!line) {
+      line = document.createElement('div');
+      line.className = 'drop-line';
+    }
+    const ref = after || body.querySelector('.addcard');
+    if (line.nextSibling !== ref || line.parentNode !== body) body.insertBefore(line, ref);
+    DRAG.stage = col.dataset.dropStage;
+    DRAG.before = after ? after.dataset.dragDeal : null;
+  } else if (DRAG.type === 'card') {
     const col = e.target.closest('[data-drop-col]');
     if (!col) return;
     e.preventDefault();
@@ -140,7 +166,9 @@ document.addEventListener('drop', e => {
   const d = DRAG;
   DRAG = null;
   clearDropMarks();
-  if (d.type === 'card' && d.col) {
+  if (d.type === 'deal' && d.stage) {
+    dropDeal(d.id, d.stage, d.before || null);
+  } else if (d.type === 'card' && d.col) {
     const t = task(d.id);
     const colTs = D()
       .tasks.filter(x => x.status === d.col && x.id !== t.id && !x.archived)

@@ -22,6 +22,14 @@ const spec = () => ({
   saved_views: { key: 'id', value: seed().view, patch: { name: 'hacked' } },
   task_favorites: { key: 'task_id', value: seed().task1, patch: { task_id: seed().task2 } },
   project_favorites: { key: 'project_id', value: seed().project, patch: { project_id: id() } },
+  crm_stages: { key: 'id', value: seed().stage, patch: { name: 'hacked' } },
+  crm_companies: { key: 'id', value: seed().company, patch: { name: 'hacked' } },
+  crm_contacts: { key: 'id', value: seed().contact, patch: { name: 'hacked' } },
+  crm_deals: { key: 'id', value: seed().deal, patch: { title: 'hacked' } },
+  crm_activities: { key: 'id', value: seed().crmActivity, patch: { content: 'hacked' } },
+  crm_sequences: { key: 'id', value: seed().sequence, patch: { name: 'hacked' } },
+  crm_sequence_steps: { key: 'id', value: seed().step, patch: { body: 'hacked' } },
+  crm_sequence_enrollments: { key: 'id', value: seed().enrollment, patch: { status: 'paused' } },
 });
 const fingerprint = (table, key, value) => query(`select md5(t::text) as h from public.${table} t where ${key} = '${value}' order by 1`).map(r => r.h);
 
@@ -91,6 +99,14 @@ describe.skipIf(!available)('isolation between workspaces', () => {
       task_favorites: { member_id: memberId('b'), task_id: seed().task1 },
       project_favorites: { member_id: memberId('b'), project_id: seed().project },
       member_state: { member_id: memberId('a'), workspace_id: world.wsA, state: {} },
+      crm_stages: { workspace_id: world.wsA, slug: 'planted', name: 'Planted', kind: 'open', position: 40, color: 'gray' },
+      crm_companies: { workspace_id: world.wsA, name: 'planted' },
+      crm_contacts: { workspace_id: world.wsA, name: 'planted' },
+      crm_deals: { workspace_id: world.wsA, title: 'planted', stage_id: seed().stage },
+      crm_activities: { deal_id: seed().deal, type: 'note', content: 'planted' },
+      crm_sequences: { workspace_id: world.wsA, name: 'planted' },
+      crm_sequence_steps: { sequence_id: seed().sequence, position: 9, channel: 'email', body: 'planted' },
+      crm_sequence_enrollments: { sequence_id: seed().sequence, deal_id: seed().deal },
     });
     it.each([
       'teams',
@@ -108,6 +124,14 @@ describe.skipIf(!available)('isolation between workspaces', () => {
       'task_favorites',
       'project_favorites',
       'member_state',
+      'crm_stages',
+      'crm_companies',
+      'crm_contacts',
+      'crm_deals',
+      'crm_activities',
+      'crm_sequences',
+      'crm_sequence_steps',
+      'crm_sequence_enrollments',
     ])('%s', async table => {
       const before = query(`select count(*)::int as n from public.${table}`)[0].n;
       denied(await as('b').from(table).insert(attempts()[table]));

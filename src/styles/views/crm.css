@@ -1,0 +1,226 @@
+/* CRM pipeline. Reuses the kanban (board.css) and adds deal cards, metrics and the timeline. */
+.crm-page {
+  min-height: 0;
+}
+.crm-tabs {
+  padding: 0 var(--gutter);
+  flex-shrink: 0;
+}
+.crm-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.crm-metrics {
+  padding: 14px var(--gutter) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.crm-funnel {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.crm-conv {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.crm-conv b {
+  color: var(--text);
+  font-weight: 600;
+  margin-left: 4px;
+}
+.crm-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px var(--gutter) 0;
+  flex-shrink: 0;
+}
+.crm-tools .select {
+  height: 28px;
+  width: auto;
+  font-size: 12.5px;
+}
+.checkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  height: 28px;
+  white-space: nowrap;
+}
+.crm-board {
+  padding-top: 12px;
+}
+.bcol.side {
+  background: color-mix(in srgb, var(--sunken) 82%, var(--surface));
+}
+.bcol .deal-sum {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.bcol-h .acts {
+  margin-left: 0;
+}
+.dealcard .title {
+  font-weight: 550;
+}
+.deal-who {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+.deal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.deal-tag {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deal-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+  color: var(--text);
+}
+.intent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.intent i {
+  width: 28px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  position: relative;
+  overflow: hidden;
+}
+.intent i::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--p) * 1%);
+  background: var(--heat, var(--amber));
+}
+.due.today {
+  color: var(--amber);
+}
+.crm-table {
+  margin: 8px var(--gutter) 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.crm-table .tbl th,
+.crm-table .tbl td {
+  width: auto;
+}
+.crm-seqs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px var(--gutter) 28px;
+  overflow: auto;
+}
+.crm-seq-desc {
+  margin: 0 14px 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.crm-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+}
+.crm-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 6px;
+  font-size: 13px;
+  border-top: 1px solid var(--divider);
+}
+.crm-step-form,
+.crm-seq-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 14px 12px;
+}
+.crm-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.crm-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.crm-act-ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.crm-act-body {
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.crm-mini {
+  width: 100%;
+  text-align: left;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 13px;
+}
+.crm-drawer .kv dd .input,
+.crm-drawer .kv dd .select {
+  width: 100%;
+}
+.crm-drawer .field {
+  margin-bottom: 10px;
+}

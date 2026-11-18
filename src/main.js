@@ -54,6 +54,7 @@ import './actions/subtasks.js';
 import './actions/archive.js';
 import './actions/planning.js';
 import './actions/session.js';
+import './actions/crm.js';
 import { S, D } from './core/store.js';
 import { A } from './actions/actions.js';
 import { render, go, onUrlChange } from './shell/render.js';

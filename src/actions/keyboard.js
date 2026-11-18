@@ -134,6 +134,11 @@ document.addEventListener('keydown', e => {
       A.closeDrawer();
       return;
     }
+    if (S.ui.deal || S.ui.crmRecord) {
+      if (typing) t.blur();
+      A.closeDeal();
+      return;
+    }
     if (S.ui.mnav) {
       A.closeMnav();
       return;
@@ -183,7 +188,7 @@ document.addEventListener('keydown', e => {
   const k = e.key;
   if (gPending && Date.now() - gPending < 1200) {
     gPending = 0;
-    const map = { h: 'home', t: 'mytasks', p: 'projects', i: 'inbox', c: 'calendar', s: 'settings', n: 'notifications', a: 'activity', m: 'members' };
+    const map = { h: 'home', t: 'mytasks', p: 'projects', i: 'inbox', c: 'calendar', s: 'settings', n: 'notifications', a: 'activity', m: 'members', d: 'crm' };
     if (map[k.toLowerCase()]) {
       e.preventDefault();
       go(map[k.toLowerCase()]);

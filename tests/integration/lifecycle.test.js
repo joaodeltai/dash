@@ -48,6 +48,23 @@ async function buildWorkspace() {
   okOf(await c.from('saved_views').insert({ id: ids.view, project_id: ids.project, name: 'v' }));
   okOf(await c.from('task_favorites').insert({ member_id: ids.ownerMember, task_id: ids.task }));
   okOf(await c.from('project_favorites').insert({ member_id: ids.ownerMember, project_id: ids.project }));
+  const stage = query(`select id from public.crm_stages where workspace_id = '${ids.ws}' and slug = 'new'`)[0].id;
+  ids.company = id();
+  ids.contact = id();
+  ids.deal = id();
+  ids.crmActivity = id();
+  ids.sequence = id();
+  ids.step = id();
+  ids.enrollment = id();
+  okOf(await c.from('crm_companies').insert({ id: ids.company, workspace_id: ids.ws, name: 'Acme' }));
+  okOf(await c.from('crm_contacts').insert({ id: ids.contact, workspace_id: ids.ws, company_id: ids.company, name: 'Ada' }));
+  okOf(
+    await c.from('crm_deals').insert({ id: ids.deal, workspace_id: ids.ws, title: 'Deal', stage_id: stage, company_id: ids.company, contact_id: ids.contact }),
+  );
+  okOf(await c.from('crm_activities').insert({ id: ids.crmActivity, deal_id: ids.deal, type: 'note', content: 'hi' }));
+  okOf(await c.from('crm_sequences').insert({ id: ids.sequence, workspace_id: ids.ws, name: 'Seq' }));
+  okOf(await c.from('crm_sequence_steps').insert({ id: ids.step, sequence_id: ids.sequence, position: 0, channel: 'email', body: 'oi' }));
+  okOf(await c.from('crm_sequence_enrollments').insert({ id: ids.enrollment, sequence_id: ids.sequence, deal_id: ids.deal }));
   return { owner, ids, adminMember, memberMember };
 }
 
@@ -68,6 +85,14 @@ const WS_TABLES = [
   'saved_views',
   'task_favorites',
   'project_favorites',
+  'crm_stages',
+  'crm_companies',
+  'crm_contacts',
+  'crm_deals',
+  'crm_activities',
+  'crm_sequences',
+  'crm_sequence_steps',
+  'crm_sequence_enrollments',
 ];
 
 describe.skipIf(!available)('deleting a workspace', () => {
