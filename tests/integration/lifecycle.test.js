@@ -52,6 +52,7 @@ async function buildWorkspace() {
   ids.company = id();
   ids.contact = id();
   ids.deal = id();
+  ids.research = id();
   ids.crmActivity = id();
   ids.sequence = id();
   ids.step = id();
@@ -60,6 +61,19 @@ async function buildWorkspace() {
   okOf(await c.from('crm_contacts').insert({ id: ids.contact, workspace_id: ids.ws, company_id: ids.company, name: 'Ada' }));
   okOf(
     await c.from('crm_deals').insert({ id: ids.deal, workspace_id: ids.ws, title: 'Deal', stage_id: stage, company_id: ids.company, contact_id: ids.contact }),
+  );
+  okOf(
+    await c.from('crm_research').insert({
+      id: ids.research,
+      deal_id: ids.deal,
+      icp_decision: 'keep',
+      why_them: 'Porque',
+      confidence: 'high',
+      icp_fit: 10,
+      buying_power: 5,
+      intent_signal: 10,
+      angle_quality: 5,
+    }),
   );
   okOf(await c.from('crm_activities').insert({ id: ids.crmActivity, deal_id: ids.deal, type: 'note', content: 'hi' }));
   okOf(await c.from('crm_sequences').insert({ id: ids.sequence, workspace_id: ids.ws, name: 'Seq' }));
@@ -89,6 +103,7 @@ const WS_TABLES = [
   'crm_companies',
   'crm_contacts',
   'crm_deals',
+  'crm_research',
   'crm_activities',
   'crm_sequences',
   'crm_sequence_steps',

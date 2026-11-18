@@ -32,6 +32,7 @@ export const ALL_TABLES = [
   'crm_companies',
   'crm_contacts',
   'crm_deals',
+  'crm_research',
   'crm_activities',
   'crm_sequences',
   'crm_sequence_steps',

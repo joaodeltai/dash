@@ -66,6 +66,7 @@ A sessão fica no `localStorage` do navegador (gerenciada pelo supabase-js) e é
 | `notifs[]`                                                        | `notifications` (criadas por triggers; o cliente só marca como lida)      |
 | `events[]`, `savedViews[]`                                        | `events`, `saved_views`                                                   |
 | `crmStages[]`, `companies[]`, `contacts[]`, `deals[]`             | `crm_stages`, `crm_companies`, `crm_contacts`, `crm_deals`                |
+| `research[]`                                                      | `crm_research` (várias por negócio; a nota em partes fica aqui)           |
 | `crmActivities[]` (uma entrada `pending` só existe na tela)       | `crm_activities` (mudança de etapa também nasce de um trigger)            |
 | `sequences[]` (`steps`), `enrollments[]`                          | `crm_sequences`, `crm_sequence_steps`, `crm_sequence_enrollments`         |
 | `fav` em tarefa/projeto                                           | `task_favorites`, `project_favorites` (pessoal)                           |
