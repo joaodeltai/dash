@@ -8,6 +8,7 @@ export const CRM_TABS = [
   ['companies', 'Companies', 'building-2'],
   ['contacts', 'Contacts', 'contact'],
   ['sequences', 'Sequences', 'workflow'],
+  ['email', 'Email', 'mail'],
 ];
 
 export const CRM_SOURCES = [

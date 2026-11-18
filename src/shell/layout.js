@@ -75,8 +75,8 @@ export function renderPage() {
 }
 
 export function sItem(route, label, icon, opt = {}) {
-  const on = S.ui.route === route && (!opt.id || S.ui.params.id === opt.id);
-  return `<button class="sitem ${on ? 'on' : ''}" data-a="${opt.act || 'go'}" data-r="${route}" ${opt.id ? `data-id="${opt.id}"` : ''} ${S.ui.collapsed ? `data-tip="${esc(label)}" data-tip-pos="right"` : ''} ${on ? 'aria-current="page"' : ''}>${ic(icon, 16)}<span class="trunc">${esc(label)}</span>${opt.ct ? `<span class="ct ${opt.dot ? 'dotc' : ''}">${opt.ct}</span>` : ''}${opt.kbd ? `<span class="ct hide-m"><kbd>${opt.kbd}</kbd></span>` : ''}</button>`;
+  const on = opt.on != null ? opt.on : S.ui.route === route && (!opt.id || S.ui.params.id === opt.id);
+  return `<button class="sitem ${on ? 'on' : ''}" data-a="${opt.act || 'go'}" data-r="${route}" ${opt.id ? `data-id="${opt.id}"` : ''} ${opt.tab ? `data-tab="${esc(opt.tab)}"` : ''} ${S.ui.collapsed ? `data-tip="${esc(label)}" data-tip-pos="right"` : ''} ${on ? 'aria-current="page"' : ''}>${ic(icon, 16)}<span class="trunc">${esc(label)}</span>${opt.ct ? `<span class="ct ${opt.dot ? 'dotc' : ''}">${opt.ct}</span>` : ''}${opt.kbd ? `<span class="ct hide-m"><kbd>${opt.kbd}</kbd></span>` : ''}</button>`;
 }
 export function renderSidebar() {
   const u = S.ui,
@@ -107,7 +107,8 @@ export function renderSidebar() {
       <div class="sgroup">
         <div class="sgroup-h">${tr('Workspace')}</div>
         ${sItem('overview', tr('Overview'), 'layout-dashboard')}
-        ${sItem('crm', tr('CRM'), 'handshake')}
+        ${sItem('crm', tr('CRM'), 'handshake', { on: u.route === 'crm' && (u.params.tab || 'pipeline') !== 'email' })}
+        ${sItem('crm', tr('Email'), 'mail', { tab: 'email', on: u.route === 'crm' && u.params.tab === 'email' })}
         ${sItem('projects', tr('Projects'), 'folder-kanban')}
         ${sItem('tasks', tr('Tasks'), 'list-checks')}
         ${sItem('calendar', tr('Calendar'), 'calendar')}

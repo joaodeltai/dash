@@ -1,6 +1,6 @@
 # Banco de dados
 
-Este documento descreve o schema criado pelas migrations em `supabase/migrations/`. A primeira (`20261111044354_init_schema.sql`) cria o workspace de projetos; `20261117220000_crm.sql` acrescenta o CRM; `20261118014342_crm_prospecting.sql` acrescenta a pesquisa de prospecção; `20261118060000_crm_email_draft.sql` acrescenta o rascunho de e-mail no lead. Nada disso altera as tabelas de tarefas. Para a visão geral de como o app usa o banco, veja [ARCHITECTURE.md](ARCHITECTURE.md).
+Este documento descreve o schema criado pelas migrations em `supabase/migrations/`. A primeira (`20261111044354_init_schema.sql`) cria o workspace de projetos; `20261117220000_crm.sql` acrescenta o CRM; `20261118014342_crm_prospecting.sql` acrescenta a pesquisa de prospecção; `20261118060000_crm_email_draft.sql` acrescenta o rascunho de e-mail no lead; `20261118183000_crm_mailbox.sql` acrescenta a caixa comercial. Nada disso altera as tabelas de tarefas. Para a visão geral de como o app usa o banco, veja [ARCHITECTURE.md](ARCHITECTURE.md). A caixa (senha cifrada, leitura IMAP, envio desligado) está em [EMAIL.md](EMAIL.md).
 
 ## Conceitos
 
@@ -320,6 +320,23 @@ Confiança aceita `high`/`medium`/`low` e também `A`/`alta`, `M`/`média`, `B`/
 `crm_deals.email_draft` guarda o rascunho no lead. Nulo significa que não há rascunho. Preenchido, o objeto tem `assunto`, `email_decisor`, `corpo`, `versao_ativa` e `versoes`. Assunto e corpo do topo repetem a versão ativa. Cada item de `versoes` tem rótulo `A`, `B`, `C`… na ordem, o próprio assunto e corpo, e um `canal` opcional (`email` ou `linkedin`). O check `crm_deals_email_draft_ok` recusa qualquer outra forma. A mesma migration copia as atividades de saída marcadas como rascunho (`meta.status` = `rascunho` e `meta.aprovado` = false) para esse campo — o corpo é o texto inteiro da atividade — e apaga só essas linhas. Nota, mudança de etapa e mensagem já enviada ficam. A cópia não altera `stage_id`.
 
 Enquanto a migration do CRM inteiro não foi aplicada, o app abre o workspace mesmo assim e a seção CRM avisa que o schema ainda não está lá. Se a de prospecção ou a do rascunho ainda não rodou, o pipeline continua e o app não grava a coluna que falta. Depois do `supabase db push`, a mesma versão do front passa a sincronizar pesquisa, nota, fontes, variante e o rascunho.
+
+### Caixa comercial
+
+`20261118183000_crm_mailbox.sql` cria a conexão da caixa, o ciphertext da senha, o status da última leitura, as mensagens copiadas, o vínculo com lead ou contato, a aprovação de envio e o Message-ID de um envio futuro. Não altera `crm_deals` nem `email_draft`. Não há trigger de envio.
+
+| Tabela                                  | Quem lê pelo navegador                                               | O que não vai para o navegador                                                                                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crm_mailboxes`                         | membro que escreve no CRM (`can_write`); gravar a linha é `is_admin` | a senha, que não é coluna desta tabela                                                                                                                                                 |
+| `crm_mailbox_secrets`                   | ninguém                                                              | `ciphertext`, `nonce` e `tag`. RLS forçada, sem política, sem grant para `anon` e `authenticated`. Só a service role, na função da Vercel, descriptografa com `EMAIL_CREDENTIALS_KEY`. |
+| `crm_mailbox_status`                    | `can_write`                                                          | —                                                                                                                                                                                      |
+| `crm_inbox_messages`, `crm_inbox_links` | `can_write`                                                          | a função é quem grava. O sync do app não inclui estas tabelas.                                                                                                                         |
+| `crm_email_approvals`                   | `can_write` lê e insere                                              | o membro não atualiza nem apaga. `consumed_at` só muda pela service role, depois de um envio que passou pelas duas travas.                                                             |
+| `crm_sent_messages`                     | `can_write`                                                          | insert só pela service role, e o trigger recusa insert com usuário de sessão.                                                                                                          |
+
+`needs_triage` é um sinal na mensagem copiada. Não muda `crm_deals.stage_id`. POP3 (`pop.hostinger.com:995`) fica na linha como informação; o check só aceita esse host. IMAP e SMTP também estão presos a `imap.hostinger.com:993` e `smtp.hostinger.com:465`, com SSL obrigatório.
+
+Estas tabelas não entram na publicação `supabase_realtime`. O passo a passo de configuração está em [EMAIL.md](EMAIL.md).
 
 ## Criar uma nova migration
 

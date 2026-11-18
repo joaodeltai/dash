@@ -25,6 +25,7 @@ Este repositório não declara licença própria: nenhuma foi inventada. Este te
 - Interface em inglês e em português do Brasil. O idioma segue o navegador na primeira visita e pode ser trocado na tela de login e em Configurações; a escolha fica no perfil da pessoa.
 - Histórico de atividade que continua disponível depois que a tarefa ou o projeto é excluído.
 - CRM com pipeline de vendas (quadro kanban de oportunidades, empresas, contatos, cadências e métricas), em tabelas próprias para não misturar com o status das tarefas.
+- Caixa comercial na aba E-mail do CRM (`#/crm/email`): a senha fica cifrada, a leitura IMAP não marca a mensagem como lida e o envio nasce desligado. O passo a passo está em [docs/EMAIL.md](docs/EMAIL.md).
 
 ## Stack
 
@@ -72,6 +73,9 @@ vercel.json             build, saída e cabeçalhos de segurança (CSP) da Verce
 .env.example            modelo das variáveis de ambiente (VITE_*)
 .github/workflows/      CI: lint, formatação, testes unitários e build
 supabase/               config.toml do Supabase local e migrations/ (schema, RLS, Storage, Realtime)
+api/email/              função da Vercel que testa, lê e (com as duas travas) enviaria a caixa
+server/email/           IMAP, SMTP, cifra e regras de envio. Não entra no bundle do navegador.
+shared/mailbox.js       hosts sugeridos e os nomes das variáveis. Sem senha.
 docs/                   ARCHITECTURE.md, SETUP.md, DATABASE.md e preview.png
 tests/
   unit/                 lógica pura: mapeadores, motor de sincronização e tradução (inclui a cobertura do dicionário pt-BR)
