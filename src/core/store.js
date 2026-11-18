@@ -90,6 +90,7 @@ export const S = {
     collapsedCols: {},
     errors: {},
     drafts: {},
+    draftTab: {},
   },
 };
 /* Remembers presentation preferences in this browser. */

@@ -1,3 +1,5 @@
+import { parseEmailDraft } from '../core/email-draft.js';
+
 /* =====================================================================
    MAPPERS: pure translation between the in-memory workspace (`S.data`, the
    shape every page and action already works with) and database rows.
@@ -252,6 +254,8 @@ export function emptyData() {
     // False only when this browser loaded a database that does not have crm_research yet.
     // Writes then omit the columns from that migration, so the current pipeline keeps saving.
     crmProspecting: true,
+    // False when crm_deals.email_draft is not in the database yet. The deal still saves.
+    crmEmailDraft: true,
     projOrder: [],
     savedViews: [],
     recentSearches: [],
@@ -265,7 +269,7 @@ export function emptyData() {
            comments, activity, notifications, events, saved_views, task_favorites, project_favorites,
            member_state, profile, crm_stages, crm_companies, crm_contacts, crm_deals, crm_research,
            crm_activities, crm_sequences, crm_sequence_steps, crm_sequence_enrollments, crmReady,
-           crmProspecting }
+           crmProspecting, crmEmailDraft }
    ctx:  { wsId, meId, userId, workspaces }
    ===================================================================== */
 export function hydrate(rows, ctx) {
@@ -424,6 +428,7 @@ export function hydrate(rows, ctx) {
 
   d.crmReady = rows.crmReady !== false;
   d.crmProspecting = rows.crmProspecting !== false;
+  d.crmEmailDraft = rows.crmEmailDraft !== false && d.crmProspecting;
   d.crmStages = [...(rows.crm_stages || [])]
     .sort((a, b) => a.position - b.position || String(a.slug).localeCompare(String(b.slug)))
     .map(s => ({ id: s.id, slug: s.slug, name: s.name, kind: s.kind, position: s.position, color: s.color || 'gray' }));
@@ -482,6 +487,7 @@ export function hydrate(rows, ctx) {
     tags: deal.tags || [],
     order: Number(deal.position) || 0,
     agent: deal.created_by_agent || '',
+    draft: parseEmailDraft(deal.email_draft),
     wonAt: toMs(deal.won_at),
     lostAt: toMs(deal.lost_at),
     created: toMs(deal.created_at) || 0,
@@ -713,8 +719,11 @@ export function normalize(d) {
     if (deal.contact && !contactIds.has(deal.contact)) deal.contact = null;
     if (deal.owner && !hasMember(deal.owner)) deal.owner = null;
     if (!Array.isArray(deal.tags)) deal.tags = [];
+    deal.draft = parseEmailDraft(deal.draft);
   }
   if (typeof d.crmProspecting !== 'boolean') d.crmProspecting = true;
+  if (typeof d.crmEmailDraft !== 'boolean') d.crmEmailDraft = true;
+  if (d.crmProspecting === false) d.crmEmailDraft = false;
   d.research = d.research.filter(r => r && dealIds.has(r.deal));
   for (const r of d.research) {
     if (r.company && !companyIds.has(r.company)) r.company = null;
@@ -1002,7 +1011,7 @@ export function flatten(state, ctx) {
   }
   for (const deal of d.deals) {
     const kind = stageKind.get(deal.stage);
-    put('crm_deals', {
+    const row = {
       id: deal.id,
       workspace_id: ws,
       title: str(deal.title, 200, 'Untitled deal').trim() || 'Untitled deal',
@@ -1024,7 +1033,10 @@ export function flatten(state, ctx) {
       lost_at: kind === 'lost' ? toIso(deal.lostAt) : null,
       created_at: toIso(deal.created) || toIso(0),
       updated_at: toIso(deal.updated) || toIso(deal.created) || toIso(0),
-    });
+    };
+    // The column arrives in a later migration. Sending it before that rejects every deal write.
+    if (d.crmProspecting !== false && d.crmEmailDraft !== false) row.email_draft = parseEmailDraft(deal.draft);
+    put('crm_deals', row);
   }
   for (const a of d.crmActivities) {
     // A pending entry is only the on-screen copy of a stage change the database trigger records.
