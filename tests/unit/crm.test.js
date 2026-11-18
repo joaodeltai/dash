@@ -297,5 +297,34 @@ describe('CRM mappers', () => {
     expect(flat.crm_activities.get('ca2').message_variant).toBeUndefined();
     expect(flat.crm_research.size).toBe(0);
     expect(flat.crm_deals.get('d1').intent_score).toBe(72);
+    expect(flat.crm_deals.get('d1').email_draft).toBeUndefined();
+  });
+
+  it('round-trips the email draft and omits the column until the migration exists', () => {
+    const rows = crmRows();
+    const body = 'Oi, Lia.\nSegunda linha.';
+    rows.crm_deals[0].email_draft = {
+      assunto: 'Primeira',
+      email_decisor: 'lia@acme.com.br',
+      corpo: body,
+      versao_ativa: 'A',
+      versoes: [{ rotulo: 'A', assunto: 'Primeira', corpo: body, canal: 'email' }],
+    };
+    const { data } = hydrate(rows, ctx);
+    expect(data.deals[0].draft.corpo).toBe(body);
+    const flat = flatten(stateOf(data), ctx);
+    expect(flat.crm_deals.get('d1').email_draft).toEqual(rows.crm_deals[0].email_draft);
+    const back = { ...rows, crm_deals: [...flat.crm_deals.values()] };
+    expect(diff(flat, flatten(stateOf(hydrate(back, ctx).data), ctx)).count).toBe(0);
+
+    data.crmEmailDraft = false;
+    expect(flatten(stateOf(data), ctx).crm_deals.get('d1').email_draft).toBeUndefined();
+    expect(flatten(stateOf(data), ctx).crm_activities.get('ca2').message_variant).toBe('custo-v3');
+
+    data.crmEmailDraft = true;
+    data.deals[0].draft = { assunto: 'quebrado' };
+    normalize(data);
+    expect(data.deals[0].draft).toBeNull();
+    expect(flatten(stateOf(data), ctx).crm_deals.get('d1').email_draft).toBeNull();
   });
 });

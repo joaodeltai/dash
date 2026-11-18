@@ -118,6 +118,16 @@ A.openDeal = el => {
   const dr = $('.drawer');
   if (dr && !dr.contains(document.activeElement)) dr.focus({ preventScroll: true });
 };
+A.pickDraftVersion = el => {
+  const id = el.dataset.id;
+  const rotulo = el.dataset.v || '';
+  const row = deal(id);
+  if (!row?.draft?.versoes?.some(v => v.rotulo === rotulo)) return;
+  if (!S.ui.draftTab || typeof S.ui.draftTab !== 'object') S.ui.draftTab = {};
+  if (S.ui.draftTab[id] === rotulo) return;
+  S.ui.draftTab[id] = rotulo;
+  render();
+};
 A.closeDeal = () => {
   S.ui.deal = null;
   S.ui.crmRecord = null;

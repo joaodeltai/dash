@@ -361,6 +361,7 @@ async function fetchRows(wsId) {
       ...crm.rows,
       crmReady: crm.ready,
       crmProspecting: crm.prospecting,
+      crmEmailDraft: crm.emailDraft,
     },
   };
 }
@@ -383,6 +384,11 @@ function missingTable(err) {
   const msg = String(err?.message || '');
   return code === '42P01' || code === 'PGRST205' || /could not find the table/i.test(msg) || /does not exist/i.test(msg);
 }
+function missingColumn(err) {
+  const code = err?.code || '';
+  const msg = String(err?.message || '');
+  return code === '42703' || code === 'PGRST204' || /could not find the '.*' column/i.test(msg) || /column .* does not exist/i.test(msg);
+}
 async function fetchCrm(wsId) {
   const inWs = q => q.eq('workspace_id', wsId);
   const core = CRM_TABLES.filter(([name]) => name !== 'crm_research');
@@ -400,11 +406,22 @@ async function fetchCrm(wsId) {
       rows.crm_research = [];
       prospecting = false;
     }
-    return { ready: true, prospecting, rows };
+    // email_draft lands after prospecting. Selecting it is the probe: a missing column
+    // must not be written back, or every deal save is rejected.
+    let emailDraft = false;
+    if (prospecting) {
+      try {
+        unwrap(await sb.from('crm_deals').select('email_draft').eq('workspace_id', wsId).limit(1));
+        emailDraft = true;
+      } catch (err) {
+        if (!missingColumn(err)) throw err;
+      }
+    }
+    return { ready: true, prospecting, emailDraft, rows };
   } catch (err) {
     if (!missingTable(err)) throw err;
     console.warn('[crm] schema not installed yet; the pipeline stays hidden until the migration is applied.');
-    return { ready: false, prospecting: false, rows: empty };
+    return { ready: false, prospecting: false, emailDraft: false, rows: empty };
   }
 }
 

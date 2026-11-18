@@ -224,3 +224,115 @@
 .crm-drawer .field {
   margin-bottom: 10px;
 }
+.draft-card {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.draft-card-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  background: var(--sunken);
+  border-bottom: 1px solid var(--divider);
+}
+.draft-card-h .i {
+  color: var(--amber);
+}
+.draft-state {
+  font-size: var(--fs-xs);
+  color: var(--amber);
+  font-weight: 550;
+}
+.draft-subject {
+  flex: 1 0 100%;
+  margin: 2px 0 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+.draft-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--divider);
+  overflow-x: auto;
+}
+.draft-tab {
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--r) var(--r) 0 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.draft-tab span {
+  color: var(--text-3);
+}
+.draft-tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  font-weight: 600;
+}
+.draft-tab[aria-selected='true'] span {
+  color: var(--text-2);
+  font-weight: 500;
+}
+.draft-route {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--divider);
+  font-size: var(--fs-xs);
+}
+.draft-route div {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.draft-route dt {
+  margin: 0;
+  color: var(--text-3);
+}
+.draft-route dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.draft-route dd.is-missing {
+  color: var(--amber);
+}
+.draft-body {
+  padding: 12px 14px 14px;
+  font-size: var(--fs);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.draft-empty {
+  margin: 0;
+  padding: 14px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.draft-card.is-empty .draft-card-h {
+  border-bottom: none;
+}
