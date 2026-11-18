@@ -140,7 +140,7 @@ export async function buildWorld(cfg, run) {
   seed.notification = query(`select id from public.notifications where workspace_id = '${ws}' and recipient_id = '${users.mem.memberId}' limit 1`)[0]?.id;
 
   seed.stage = query(`select id from public.crm_stages where workspace_id = '${ws}' and slug = 'new'`)[0].id;
-  Object.assign(seed, { company: id(), contact: id(), deal: id(), crmActivity: id(), sequence: id(), step: id(), enrollment: id() });
+  Object.assign(seed, { company: id(), contact: id(), deal: id(), research: id(), crmActivity: id(), sequence: id(), step: id(), enrollment: id() });
   await w(A.from('crm_companies').insert({ id: seed.company, workspace_id: ws, name: 'Seed Co', domain: 'seed.example' }), 'seed company');
   await w(
     A.from('crm_contacts').insert({ id: seed.contact, workspace_id: ws, company_id: seed.company, name: 'Seed Contact', email: 'seed@seed.example' }),
@@ -158,6 +158,26 @@ export async function buildWorld(cfg, run) {
       value_cents: 10000,
     }),
     'seed deal',
+  );
+  await w(
+    A.from('crm_research').insert({
+      id: seed.research,
+      deal_id: seed.deal,
+      company_id: seed.company,
+      contact_id: seed.contact,
+      icp_decision: 'maybe',
+      why_them: 'Seed',
+      why_now: 'Seed',
+      angle: 'Seed angle',
+      confidence: 'm',
+      icp_fit: 10,
+      buying_power: 10,
+      intent_signal: 10,
+      angle_quality: 5,
+      gaps: ['[FALTA: faturamento]'],
+      created_by_agent: 'pesquisador',
+    }),
+    'seed research',
   );
   await w(A.from('crm_activities').insert({ id: seed.crmActivity, deal_id: seed.deal, type: 'note', content: 'Seed note' }), 'seed crm activity');
   await w(A.from('crm_sequences').insert({ id: seed.sequence, workspace_id: ws, name: 'Seed sequence' }), 'seed sequence');

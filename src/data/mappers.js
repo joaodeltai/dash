@@ -48,6 +48,9 @@ export const TABLES = [
   { name: 'crm_sequences', pk: ['id'], mode: 'full' },
   { name: 'crm_contacts', pk: ['id'], mode: 'full' },
   { name: 'crm_deals', pk: ['id'], mode: 'full' },
+  // Research hangs off a deal. intent_score on this table is generated (the sum of the four
+  // parts), so flatten never sends it. The deal's own intent_score is the latest research total.
+  { name: 'crm_research', pk: ['id'], mode: 'full' },
   { name: 'crm_sequence_steps', pk: ['id'], mode: 'full' },
   { name: 'crm_activities', pk: ['id'], mode: 'full' },
   { name: 'crm_sequence_enrollments', pk: ['id'], mode: 'full' },
@@ -69,6 +72,19 @@ const CRM_ACT = ['email', 'whatsapp', 'linkedin', 'call', 'meeting', 'note', 'st
 const CRM_DIR = ['inbound', 'outbound', 'internal'];
 const CRM_CHANNEL = ['email', 'whatsapp', 'linkedin', 'call'];
 const CRM_ENROLL = ['active', 'paused', 'done'];
+const CRM_DECISION = ['keep', 'maybe', 'drop'];
+const CONFIDENCE_ALIAS = {
+  a: 'high',
+  alta: 'high',
+  high: 'high',
+  m: 'medium',
+  media: 'medium',
+  média: 'medium',
+  medium: 'medium',
+  b: 'low',
+  baixa: 'low',
+  low: 'low',
+};
 const ROLE_UP = { owner: 'Owner', admin: 'Admin', member: 'Member', guest: 'Guest' };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -125,6 +141,69 @@ const scoreOf = v => {
   const n = Math.round(Number(v));
   return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
 };
+const partOf = (v, max) => {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(max, n);
+};
+const countOf = (v, max) => {
+  if (v == null || v === '') return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(max, n));
+};
+const yearOf = v => {
+  if (v == null || v === '') return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 1800 || n > 2100) return null;
+  return n;
+};
+const confidenceOf = v =>
+  CONFIDENCE_ALIAS[
+    String(v ?? '')
+      .trim()
+      .toLowerCase()
+  ] || 'medium';
+const decisionOf = v => {
+  const s = String(v ?? '')
+    .trim()
+    .toLowerCase();
+  return CRM_DECISION.includes(s) ? s : 'maybe';
+};
+/* Gaps are stored as "[FALTA: …]". A bare phrase is wrapped so the app and the agents agree. */
+const gapsOf = v => {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(v) ? v : []) {
+    let s = String(raw ?? '')
+      .trim()
+      .replace(/\s+/g, ' ');
+    if (!s) continue;
+    if (!/^\[FALTA: .{1,180}\]$/.test(s)) {
+      s = s.replace(/[[\]]/g, '').trim();
+      if (!s) continue;
+      s = `[FALTA: ${s}]`;
+    }
+    if (!/^\[FALTA: .{1,180}\]$/.test(s) || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length === 32) break;
+  }
+  return out;
+};
+const socialOf = v => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out = {};
+  for (const k of Object.keys(v).sort()) out[k] = v[k];
+  return cleanJson(out);
+};
+const variantOf = (type, direction, v) => {
+  const s = str(v, 80)
+    .replace(/[\r\n]/g, '')
+    .trim();
+  if (!s || direction !== 'outbound' || !['email', 'whatsapp', 'linkedin', 'call'].includes(type)) return '';
+  return s;
+};
 const centsOf = v => {
   const n = Math.round(Number(v));
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -165,10 +244,14 @@ export function emptyData() {
     companies: [],
     contacts: [],
     deals: [],
+    research: [],
     crmActivities: [],
     sequences: [],
     enrollments: [],
     crmReady: true,
+    // False only when this browser loaded a database that does not have crm_research yet.
+    // Writes then omit the columns from that migration, so the current pipeline keeps saving.
+    crmProspecting: true,
     projOrder: [],
     savedViews: [],
     recentSearches: [],
@@ -180,8 +263,9 @@ export function emptyData() {
    hydrate: database rows → S.data
    rows: { workspace, members, teams, projects, project_members, tasks, subtasks, task_dependencies, files,
            comments, activity, notifications, events, saved_views, task_favorites, project_favorites,
-           member_state, profile, crm_stages, crm_companies, crm_contacts, crm_deals, crm_activities,
-           crm_sequences, crm_sequence_steps, crm_sequence_enrollments, crmReady }
+           member_state, profile, crm_stages, crm_companies, crm_contacts, crm_deals, crm_research,
+           crm_activities, crm_sequences, crm_sequence_steps, crm_sequence_enrollments, crmReady,
+           crmProspecting }
    ctx:  { wsId, meId, userId, workspaces }
    ===================================================================== */
 export function hydrate(rows, ctx) {
@@ -339,6 +423,7 @@ export function hydrate(rows, ctx) {
     }));
 
   d.crmReady = rows.crmReady !== false;
+  d.crmProspecting = rows.crmProspecting !== false;
   d.crmStages = [...(rows.crm_stages || [])]
     .sort((a, b) => a.position - b.position || String(a.slug).localeCompare(String(b.slug)))
     .map(s => ({ id: s.id, slug: s.slug, name: s.name, kind: s.kind, position: s.position, color: s.color || 'gray' }));
@@ -354,6 +439,10 @@ export function hydrate(rows, ctx) {
       state: c.state || '',
       source: c.source || '',
       notes: c.notes || '',
+      social: c.social_links && typeof c.social_links === 'object' && !Array.isArray(c.social_links) ? c.social_links : {},
+      employees: c.employee_count == null ? null : Number(c.employee_count),
+      founded: c.founded_year == null ? null : Number(c.founded_year),
+      offering: c.offering || '',
       agent: c.created_by_agent || '',
       created: toMs(c.created_at) || 0,
       updated: toMs(c.updated_at) || 0,
@@ -368,6 +457,9 @@ export function hydrate(rows, ctx) {
       email: c.email || '',
       phone: c.phone || '',
       linkedin: c.linkedin || '',
+      emailSource: c.email_source || '',
+      phoneSource: c.phone_source || '',
+      linkedinSource: c.linkedin_source || '',
       notes: c.notes || '',
       agent: c.created_by_agent || '',
       created: toMs(c.created_at) || 0,
@@ -408,7 +500,36 @@ export function hydrate(rows, ctx) {
       at: toMs(a.occurred_at) || 0,
       by: a.author_id || null,
       agent: a.created_by_agent || '',
+      variant: a.message_variant || '',
       meta: a.meta && typeof a.meta === 'object' ? a.meta : {},
+    }));
+  d.research = [...(rows.crm_research || [])]
+    .sort((a, b) => (toMs(b.scored_at) || 0) - (toMs(a.scored_at) || 0) || String(a.id).localeCompare(String(b.id)))
+    .map(r => ({
+      id: r.id,
+      deal: r.deal_id,
+      company: r.company_id || null,
+      contact: r.contact_id || null,
+      decision: decisionOf(r.icp_decision),
+      reason: r.icp_reason || '',
+      whyThem: r.why_them || '',
+      whyNow: r.why_now || '',
+      trigger: r.trigger_event || '',
+      triggerOn: r.trigger_event_on || null,
+      angle: r.angle || '',
+      proofs: r.proofs || '',
+      doNotMention: r.do_not_mention || '',
+      confidence: confidenceOf(r.confidence),
+      gaps: Array.isArray(r.gaps) ? r.gaps : [],
+      fit: partOf(r.icp_fit, 30),
+      power: partOf(r.buying_power, 20),
+      signal: partOf(r.intent_signal, 35),
+      angleQuality: partOf(r.angle_quality, 15),
+      cutoff: r.score_cutoff == null ? 65 : partOf(r.score_cutoff, 100),
+      scoredAt: toMs(r.scored_at) || 0,
+      agent: r.created_by_agent || '',
+      created: toMs(r.created_at) || 0,
+      updated: toMs(r.updated_at) || 0,
     }));
   const stepsBy = groupBy(rows.crm_sequence_steps || [], 'sequence_id');
   d.sequences = [...(rows.crm_sequences || [])]
@@ -490,6 +611,7 @@ export function normalize(d) {
     'companies',
     'contacts',
     'deals',
+    'research',
     'crmActivities',
     'sequences',
     'enrollments',
@@ -591,6 +713,13 @@ export function normalize(d) {
     if (deal.contact && !contactIds.has(deal.contact)) deal.contact = null;
     if (deal.owner && !hasMember(deal.owner)) deal.owner = null;
     if (!Array.isArray(deal.tags)) deal.tags = [];
+  }
+  if (typeof d.crmProspecting !== 'boolean') d.crmProspecting = true;
+  d.research = d.research.filter(r => r && dealIds.has(r.deal));
+  for (const r of d.research) {
+    if (r.company && !companyIds.has(r.company)) r.company = null;
+    if (r.contact && !contactIds.has(r.contact)) r.contact = null;
+    if (!Array.isArray(r.gaps)) r.gaps = [];
   }
   d.crmActivities = d.crmActivities.filter(a => dealIds.has(a.deal));
   for (const a of d.crmActivities) {
@@ -803,8 +932,8 @@ export function flatten(state, ctx) {
       position: Number.isFinite(s.position) ? Math.round(s.position) : 0,
       color: oneOf(s.color, CRM_COLORS, 'gray'),
     });
-  for (const c of d.companies)
-    put('crm_companies', {
+  for (const c of d.companies) {
+    const row = {
       id: c.id,
       workspace_id: ws,
       name: str(c.name, 160, 'Company').trim() || 'Company',
@@ -818,7 +947,15 @@ export function flatten(state, ctx) {
       created_by_agent: str(c.agent, 80),
       created_at: toIso(c.created) || toIso(0),
       updated_at: toIso(c.updated) || toIso(c.created) || toIso(0),
-    });
+    };
+    if (d.crmProspecting !== false) {
+      row.social_links = socialOf(c.social);
+      row.employee_count = countOf(c.employees, 10000000);
+      row.founded_year = yearOf(c.founded);
+      row.offering = str(c.offering, 4000);
+    }
+    put('crm_companies', row);
+  }
   for (const s of d.sequences) {
     put('crm_sequences', {
       id: s.id,
@@ -841,8 +978,8 @@ export function flatten(state, ctx) {
       }),
     );
   }
-  for (const c of d.contacts)
-    put('crm_contacts', {
+  for (const c of d.contacts) {
+    const row = {
       id: c.id,
       workspace_id: ws,
       company_id: c.company || null,
@@ -855,7 +992,14 @@ export function flatten(state, ctx) {
       created_by_agent: str(c.agent, 80),
       created_at: toIso(c.created) || toIso(0),
       updated_at: toIso(c.updated) || toIso(c.created) || toIso(0),
-    });
+    };
+    if (d.crmProspecting !== false) {
+      row.email_source = str(c.emailSource, 120);
+      row.phone_source = str(c.phoneSource, 120);
+      row.linkedin_source = str(c.linkedinSource, 120);
+    }
+    put('crm_contacts', row);
+  }
   for (const deal of d.deals) {
     const kind = stageKind.get(deal.stage);
     put('crm_deals', {
@@ -885,19 +1029,55 @@ export function flatten(state, ctx) {
   for (const a of d.crmActivities) {
     // A pending entry is only the on-screen copy of a stage change the database trigger records.
     if (a.pending) continue;
-    put('crm_activities', {
+    const type = oneOf(a.type, CRM_ACT, 'note');
+    const direction = oneOf(a.direction, CRM_DIR, 'internal');
+    const row = {
       id: a.id,
       deal_id: a.deal,
       company_id: a.company || null,
       contact_id: a.contact || null,
-      type: oneOf(a.type, CRM_ACT, 'note'),
-      direction: oneOf(a.direction, CRM_DIR, 'internal'),
+      type,
+      direction,
       content: str(a.content, 20000),
       occurred_at: toIso(a.at) || toIso(0),
       author_id: a.by || null,
       created_by_agent: str(a.agent, 80),
       meta: cleanJson(a.meta && typeof a.meta === 'object' && !Array.isArray(a.meta) ? a.meta : {}),
-    });
+    };
+    if (d.crmProspecting !== false) row.message_variant = variantOf(type, direction, a.variant);
+    put('crm_activities', row);
+  }
+  if (d.crmProspecting !== false) {
+    for (const r of d.research)
+      put('crm_research', {
+        id: r.id,
+        workspace_id: ws,
+        deal_id: r.deal,
+        company_id: r.company || null,
+        contact_id: r.contact || null,
+        icp_decision: decisionOf(r.decision),
+        icp_reason: str(r.reason, 2000),
+        why_them: str(r.whyThem, 4000),
+        why_now: str(r.whyNow, 4000),
+        trigger_event: str(r.trigger, 500),
+        trigger_event_on: dateOrNull(r.triggerOn),
+        angle: str(r.angle, 300)
+          .replace(/[\r\n]+/g, ' ')
+          .trim(),
+        proofs: str(r.proofs, 8000),
+        do_not_mention: str(r.doNotMention, 4000),
+        confidence: confidenceOf(r.confidence),
+        gaps: gapsOf(r.gaps),
+        icp_fit: partOf(r.fit, 30),
+        buying_power: partOf(r.power, 20),
+        intent_signal: partOf(r.signal, 35),
+        angle_quality: partOf(r.angleQuality, 15),
+        score_cutoff: r.cutoff == null ? 65 : partOf(r.cutoff, 100),
+        scored_at: toIso(r.scoredAt) || toIso(r.created) || toIso(0),
+        created_by_agent: str(r.agent, 80),
+        created_at: toIso(r.created) || toIso(0),
+        updated_at: toIso(r.updated) || toIso(r.created) || toIso(0),
+      });
   }
   for (const e of d.enrollments)
     put('crm_sequence_enrollments', {

@@ -24,6 +24,10 @@ function crmRows() {
       state: 'SP',
       source: 'outbound',
       notes: '',
+      social_links: { linkedin: 'https://linkedin.com/company/acme', instagram: 'https://instagram.com/acme' },
+      employee_count: 120,
+      founded_year: 1998,
+      offering: 'Operação de contact center',
       created_by_agent: '',
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-02T00:00:00.000Z',
@@ -38,6 +42,9 @@ function crmRows() {
       email: 'lia@acme.com.br',
       phone: '+55 11 90000-0000',
       linkedin: 'https://linkedin.com/in/lia',
+      email_source: 'site',
+      phone_source: 'Apollo',
+      linkedin_source: 'Sales Nav',
       notes: '',
       created_by_agent: 'sdr',
       created_at: '2026-03-01T00:00:00.000Z',
@@ -81,6 +88,49 @@ function crmRows() {
       author_id: ids.me,
       created_by_agent: '',
       meta: {},
+      message_variant: 'nao-entra',
+    },
+    {
+      id: 'ca2',
+      deal_id: 'd1',
+      company_id: 'co1',
+      contact_id: 'ct1',
+      type: 'email',
+      direction: 'outbound',
+      content: 'Oi Lia',
+      occurred_at: '2026-03-09T12:00:00.000Z',
+      author_id: ids.me,
+      created_by_agent: 'sdr',
+      meta: {},
+      message_variant: 'custo-v3',
+    },
+  ];
+  rows.crm_research = [
+    {
+      id: 'r1',
+      deal_id: 'd1',
+      company_id: 'co1',
+      contact_id: 'ct1',
+      icp_decision: 'Keep',
+      icp_reason: 'Cabe no ICP',
+      why_them: 'Operação grande',
+      why_now: 'Troca de fornecedor',
+      trigger_event: 'Contrato vence',
+      trigger_event_on: '2026-03-01',
+      angle: 'Custo da operação atual',
+      proofs: 'Vaga aberta de operações',
+      do_not_mention: 'Preço de lista',
+      confidence: 'A',
+      gaps: ['faturamento', '[FALTA: decisor]'],
+      icp_fit: 24,
+      buying_power: 16,
+      intent_signal: 20,
+      angle_quality: 12,
+      score_cutoff: 65,
+      scored_at: '2026-03-08T00:00:00.000Z',
+      created_by_agent: 'pesquisador',
+      created_at: '2026-03-08T00:00:00.000Z',
+      updated_at: '2026-03-08T00:00:00.000Z',
     },
   ];
   rows.crm_sequences = [
@@ -169,6 +219,7 @@ describe('CRM mappers', () => {
       crm_companies: [...first.crm_companies.values()],
       crm_contacts: [...first.crm_contacts.values()],
       crm_deals: [...first.crm_deals.values()],
+      crm_research: [...first.crm_research.values()],
       crm_activities: [...first.crm_activities.values()],
       crm_sequences: [...first.crm_sequences.values()],
       crm_sequence_steps: [...first.crm_sequence_steps.values()],
@@ -177,6 +228,28 @@ describe('CRM mappers', () => {
     const second = flatten(stateOf(hydrate(back, ctx).data), ctx);
     expect(diff(first, second)).toEqual({ ops: {}, count: 0 });
     expect(first.crm_deals.get('d1')).toMatchObject({ value_cents: 1500000, intent_score: 72, stage_id: 'st-qual', tags: ['quente', 'inbound'] });
+    expect(first.crm_companies.get('co1')).toMatchObject({
+      social_links: { instagram: 'https://instagram.com/acme', linkedin: 'https://linkedin.com/company/acme' },
+      employee_count: 120,
+      founded_year: 1998,
+      offering: 'Operação de contact center',
+    });
+    expect(first.crm_contacts.get('ct1')).toMatchObject({ email_source: 'site', phone_source: 'Apollo', linkedin_source: 'Sales Nav' });
+    expect(first.crm_activities.get('ca1').message_variant).toBe('');
+    expect(first.crm_activities.get('ca2')).toMatchObject({ message_variant: 'custo-v3', type: 'email', direction: 'outbound' });
+    const research = first.crm_research.get('r1');
+    expect(research.intent_score).toBeUndefined();
+    expect(research).toMatchObject({
+      icp_decision: 'keep',
+      confidence: 'high',
+      gaps: ['[FALTA: faturamento]', '[FALTA: decisor]'],
+      icp_fit: 24,
+      buying_power: 16,
+      intent_signal: 20,
+      angle_quality: 12,
+      score_cutoff: 65,
+    });
+    expect(research.icp_fit + research.buying_power + research.intent_signal + research.angle_quality).toBe(72);
     expect(first.crm_sequence_steps.get('sp1')).toMatchObject({ channel: 'whatsapp', delay_days: 2, sequence_id: 'sq1' });
     expect([...first.crm_sequences.values()][0].workspace_id).toBe(ids.ws);
   });
@@ -209,6 +282,20 @@ describe('CRM mappers', () => {
     expect(data.deals.map(d => d.id)).toEqual(['d1']);
     expect(data.deals[0].company).toBeNull();
     expect(data.contacts[0].company).toBeNull();
-    expect(data.crmActivities.map(a => a.id)).toEqual(['ca1']);
+    expect(data.crmActivities.map(a => a.id).sort()).toEqual(['ca1', 'ca2']);
+    expect(data.research.map(r => r.id)).toEqual(['r1']);
+    expect(data.research[0].company).toBeNull();
+  });
+
+  it('leaves the new columns out of the write while the prospecting migration is not applied', () => {
+    const { data } = hydrate(crmRows(), ctx);
+    data.crmProspecting = false;
+    const flat = flatten(stateOf(data), ctx);
+    expect(flat.crm_companies.get('co1').social_links).toBeUndefined();
+    expect(flat.crm_companies.get('co1').offering).toBeUndefined();
+    expect(flat.crm_contacts.get('ct1').email_source).toBeUndefined();
+    expect(flat.crm_activities.get('ca2').message_variant).toBeUndefined();
+    expect(flat.crm_research.size).toBe(0);
+    expect(flat.crm_deals.get('d1').intent_score).toBe(72);
   });
 });

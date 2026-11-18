@@ -360,6 +360,7 @@ async function fetchRows(wsId) {
       member_state: member_state || { state: {} },
       ...crm.rows,
       crmReady: crm.ready,
+      crmProspecting: crm.prospecting,
     },
   };
 }
@@ -375,6 +376,7 @@ const CRM_TABLES = [
   ['crm_sequences', ['name', 'id']],
   ['crm_sequence_steps', ['position', 'id']],
   ['crm_sequence_enrollments', ['created_at', 'id']],
+  ['crm_research', ['scored_at', 'id']],
 ];
 function missingTable(err) {
   const code = err?.code || '';
@@ -383,15 +385,26 @@ function missingTable(err) {
 }
 async function fetchCrm(wsId) {
   const inWs = q => q.eq('workspace_id', wsId);
+  const core = CRM_TABLES.filter(([name]) => name !== 'crm_research');
   const empty = Object.fromEntries(CRM_TABLES.map(([name]) => [name, []]));
   try {
-    const lists = await Promise.all(CRM_TABLES.map(([name, order]) => fetchAll(name, inWs, order)));
-    const rows = Object.fromEntries(CRM_TABLES.map(([name], i) => [name, lists[i]]));
-    return { ready: true, rows };
+    const lists = await Promise.all(core.map(([name, order]) => fetchAll(name, inWs, order)));
+    const rows = Object.fromEntries(core.map(([name], i) => [name, lists[i]]));
+    // The prospecting migration can land after this front-end. A missing crm_research
+    // must not hide the pipeline that is already there; the mappers then skip the new columns.
+    let prospecting = true;
+    try {
+      rows.crm_research = await fetchAll('crm_research', inWs, ['scored_at', 'id']);
+    } catch (err) {
+      if (!missingTable(err)) throw err;
+      rows.crm_research = [];
+      prospecting = false;
+    }
+    return { ready: true, prospecting, rows };
   } catch (err) {
     if (!missingTable(err)) throw err;
     console.warn('[crm] schema not installed yet; the pipeline stays hidden until the migration is applied.');
-    return { ready: false, rows: empty };
+    return { ready: false, prospecting: false, rows: empty };
   }
 }
 
@@ -434,7 +447,7 @@ export async function openWorkspace(wsId, { route } = {}) {
   } catch {
     /* storage blocked: the workspace choice just won't be remembered */
   }
-  subscribe(wsId, { crm: loaded.rows.crmReady !== false });
+  subscribe(wsId, { crm: loaded.rows.crmReady !== false, prospecting: loaded.rows.crmProspecting !== false });
   void sb.rpc('touch_presence', { ws: wsId });
   Object.assign(S.ui, {
     booting: false,
@@ -557,6 +570,7 @@ const RT_TABLES = [
   'crm_companies',
   'crm_contacts',
   'crm_deals',
+  'crm_research',
   'crm_activities',
   'crm_sequences',
   'crm_sequence_steps',
@@ -566,7 +580,7 @@ let channel = null;
 let rtQueue = [];
 let rtTimer = null;
 
-function subscribe(wsId, { crm = true } = {}) {
+function subscribe(wsId, { crm = true, prospecting = true } = {}) {
   unsubscribe();
   channel = sb.channel('ws:' + wsId);
   const queue = table => payload => {
@@ -574,7 +588,7 @@ function subscribe(wsId, { crm = true } = {}) {
     clearTimeout(rtTimer);
     rtTimer = setTimeout(drainRealtime, 700);
   };
-  const tables = crm ? RT_TABLES : RT_TABLES.filter(t => !t.startsWith('crm_'));
+  const tables = RT_TABLES.filter(t => (crm || !t.startsWith('crm_')) && (prospecting || t !== 'crm_research'));
   for (const table of tables) {
     const filter = table === 'workspaces' ? `id=eq.${wsId}` : `workspace_id=eq.${wsId}`;
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter }, queue(table));
