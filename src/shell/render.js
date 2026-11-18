@@ -13,6 +13,7 @@ import { renderLayer } from '../overlays/drawer.js';
 import { placePop } from '../overlays/popovers.js';
 import { renderAuth, renderBoot } from '../pages/auth.js';
 import { crmTabLabel } from '../pages/crm.js';
+import { parseHash as parseRoute, routeHash } from '../core/hash-route.js';
 
 export const ROUTE_NAMES = {
   home: 'Home',
@@ -90,14 +91,7 @@ export function go(route, params = {}, opt = {}) {
 /* ---------- URL ⇄ route ----------
    The address bar mirrors the current page (#/project/<id>/<tab>, #/inbox…), so reloading keeps the place,
    the browser's Back and Forward buttons work, and links can be shared. #/task/<id> opens a task. */
-export function routeHash(route, params = {}) {
-  let h = '#/' + route;
-  if (params.id) {
-    h += '/' + encodeURIComponent(params.id);
-    if (params.tab) h += '/' + encodeURIComponent(params.tab);
-  }
-  return h;
-}
+export { routeHash };
 export function writeUrl(replace) {
   const h = routeHash(S.ui.route, S.ui.params);
   if (location.hash === h) return;
@@ -108,25 +102,7 @@ export function writeUrl(replace) {
   }
 }
 export function parseHash(hash) {
-  const parts = String(hash || '')
-    .replace(/^#\/?/, '')
-    .split('/')
-    .filter(Boolean)
-    .map(x => {
-      try {
-        return decodeURIComponent(x);
-      } catch {
-        return x;
-      }
-    });
-  if (!parts.length) return null;
-  const [route, id, tab] = parts;
-  if (route === 'task') return id ? { task: id } : null;
-  if (route !== 'project' && !ROUTE_NAMES[route]) return null;
-  const params = {};
-  if (id) params.id = id;
-  if (tab) params.tab = tab;
-  return { route, params };
+  return parseRoute(hash, route => Object.prototype.hasOwnProperty.call(ROUTE_NAMES, route));
 }
 /* Shows what a URL points to. Unknown or inaccessible targets fall back to the start page. Returns a short
    notice when the target could not be opened, so the caller can tell the person. */

@@ -18,6 +18,7 @@ import {
 } from '../core/crm.js';
 import { D, S, canCreate, company, contact, crmStages } from '../core/store.js';
 import { av, empty } from '../ui/helpers.js';
+import { pageCrmEmail } from './crm-email.js';
 
 const today = () => iso(TODAY);
 const pct = r => (r == null ? '—' : Math.round(r * 100) + '%');
@@ -37,7 +38,7 @@ export function pageCrm() {
     <nav class="tabs crm-tabs" aria-label="${tr('CRM')}">
       ${CRM_TABS.map(([k, n, i]) => `<button class="tab ${tab === k ? 'on' : ''}" ${tab === k ? 'aria-current="page"' : ''} data-a="go" data-r="crm" data-tab="${k}">${ic(i, 14)}${tr(n)}</button>`).join('')}
     </nav>
-    <div class="pbody crm-body${S.ui.fx.tab ? ' fx-tab' : ''}">${tab === 'pipeline' ? pipeline() : tab === 'companies' ? companies() : tab === 'contacts' ? contacts() : sequences()}</div>
+    <div class="pbody crm-body${S.ui.fx.tab ? ' fx-tab' : ''}">${tab === 'pipeline' ? pipeline() : tab === 'companies' ? companies() : tab === 'contacts' ? contacts() : tab === 'email' ? pageCrmEmail() : sequences()}</div>
   </div>`;
 }
 
@@ -47,6 +48,7 @@ function header(tab) {
     companies: `<button class="btn btn-primary btn-sm" data-a="newCompany">${ic('plus', 14)}${tr('New company')}</button>`,
     contacts: `<button class="btn btn-primary btn-sm" data-a="newContact">${ic('plus', 14)}${tr('New contact')}</button>`,
     sequences: `<button class="btn btn-primary btn-sm" data-a="newSequence">${ic('plus', 14)}${tr('New sequence')}</button>`,
+    email: '',
   };
   return `<div class="ph"><div><h1>${tr('CRM')}</h1><p>${tr('Sales pipeline of {name}.', { name: esc(D().ws.name) })}</p></div><div class="acts">${actions[tab] || ''}</div></div>`;
 }

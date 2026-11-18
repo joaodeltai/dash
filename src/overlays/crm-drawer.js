@@ -1,5 +1,6 @@
 /* Deal drawer and the company / contact record drawer. */
 import { emailDraftCard } from '../core/email-draft.js';
+import { dealReplySection } from '../pages/crm-email.js';
 import { ago, esc } from '../core/utils.js';
 import { ic } from '../core/icons.js';
 import { tr } from '../core/i18n.js';
@@ -47,6 +48,7 @@ export function dealDrawer(d) {
       </dl>
       ${d.agent ? `<p class="faint" style="font-size:12px;margin:8px 0 0">${tr('Created by agent {name}', { name: esc(d.agent) })}</p>` : ''}
       ${emailDraftCard(d.draft, { dealId: d.id, selected: S.ui.draftTab?.[d.id] || '', mark: ic('mail', 14) })}
+      ${dealReplySection(d)}
 
       <div class="dsec" style="margin-top:18px">
         <div class="dsec-h"><h3>${tr('Activity')}</h3><span class="cnt num">${acts.length}</span></div>

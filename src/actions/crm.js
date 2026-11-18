@@ -4,6 +4,7 @@
 import { $, TODAY, addD, esc, iso, uid } from '../core/utils.js';
 import { tr } from '../core/i18n.js';
 import { parseBrl, stageLabel } from '../core/crm.js';
+import { loadMailbox } from './crm-email.js';
 import { D, S, canCreate, company, contact, crmStage, crmStages, deal, sequence } from '../core/store.js';
 import { mutate, toast } from '../ui/toast.js';
 import { go, render } from '../shell/render.js';
@@ -114,6 +115,7 @@ A.openDeal = el => {
   S.ui.crmRecord = null;
   S.ui.deal = el.dataset.id;
   S.ui.crmEdit = null;
+  if (!S.ui.mail?.loaded && !S.ui.mail?.loading) void loadMailbox();
   render();
   const dr = $('.drawer');
   if (dr && !dr.contains(document.activeElement)) dr.focus({ preventScroll: true });

@@ -93,6 +93,7 @@ A interface existe em inglês e em português do Brasil (`core/i18n.js`). O text
 ## Segurança
 
 - A chave usada no navegador é a **publishable key**, pública por natureza. Nenhuma chave secreta existe no front-end nem no repositório.
+- A caixa comercial é a exceção de rede: o navegador chama `/api/email/*` na própria Vercel. A função lê `EMAIL_CREDENTIALS_KEY` e `SUPABASE_SECRET_KEY`, descriptografa a senha e fala IMAP/SMTP. O estado `S.data` não carrega a senha nem essas tabelas, então o sync não as apaga. Detalhe em [EMAIL.md](EMAIL.md).
 - Todas as tabelas têm **RLS**. O papel `anon` não tem privilégio algum. Detalhes das regras em [DATABASE.md](DATABASE.md).
 - Funções `security definer` ficam no schema `private`, que não é exposto pela API.
 - Notificações, vínculo de convites e criação de workspace acontecem no banco, não no cliente. Autoria (`created_by`, `uploaded_by`) também é carimbada por trigger, e referências entre workspaces são rejeitadas pelo banco.

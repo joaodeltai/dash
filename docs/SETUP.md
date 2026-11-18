@@ -298,6 +298,10 @@ Em versões mais antigas do CLI o ambiente é argumento posicional (`vercel env 
 
 **Preview e produção no mesmo projeto Supabase?** Se Preview e Production usarem o mesmo projeto Supabase, quem testar um preview grava no banco de produção. O mais seguro é um segundo projeto Supabase para Preview (com as migrations aplicadas, passos 3.2 a 3.6) e as variáveis de Preview apontando para ele. A decisão é sua.
 
+### 4.2.1. Caixa comercial (servidor, não `VITE_`)
+
+A tela **Configurações de e-mail** (`#/crm/email`) grava a senha da caixa cifrada. A chave que cifra e a secret key do Supabase ficam na Vercel, sem prefixo `VITE_`. O nome de cada variável, o comando para gerar `EMAIL_CREDENTIALS_KEY` e a ordem (migration, segredos, deploy, testar IMAP/SMTP, ler a caixa) estão em [EMAIL.md](EMAIL.md). `EMAIL_SENDING_ENABLED` fica `false`.
+
 ### 4.3. Deploy
 
 - **Preview**: automático em todo push de uma branch que não seja a de produção e em pull requests; cada um recebe um endereço próprio. Pelo CLI: `vercel`.

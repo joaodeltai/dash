@@ -29,6 +29,8 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.119.0"
+    "@supabase/supabase-js": "^2.119.0",
+    "imapflow": "^1.0.193",
+    "nodemailer": "^7.0.11"
   }
 }
