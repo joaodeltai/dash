@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseHash, routeHash } from '../../src/core/hash-route.js';
 
-const known = route => ['home', 'crm', 'inbox', 'settings'].includes(route);
+const known = route => ['home', 'crm', 'inbox', 'settings', 'content'].includes(route);
 
 describe('crm mailbox route', () => {
   it('keeps the email screen at #/crm/email', () => {
@@ -11,6 +11,16 @@ describe('crm mailbox route', () => {
     expect(parseHash('#/crm/email', known)).toEqual({ route: 'crm', params: { tab: 'email' } });
     expect(parseHash('#/crm', known)).toEqual({ route: 'crm', params: {} });
     expect(parseHash('#/crm/companies', known)).toEqual({ route: 'crm', params: { tab: 'companies' } });
+  });
+
+  it('routes the content area, a tab and a piece', () => {
+    expect(routeHash('content', { tab: 'ideas' })).toBe('#/content');
+    expect(routeHash('content', {})).toBe('#/content');
+    expect(routeHash('content', { tab: 'board' })).toBe('#/content/board');
+    expect(routeHash('content', { id: 'piece-1' })).toBe('#/content/item/piece-1');
+    expect(parseHash('#/content', known)).toEqual({ route: 'content', params: {} });
+    expect(parseHash('#/content/plan', known)).toEqual({ route: 'content', params: { tab: 'plan' } });
+    expect(parseHash('#/content/item/piece-1', known)).toEqual({ route: 'content', params: { id: 'piece-1' } });
   });
 
   it('leaves project links alone', () => {

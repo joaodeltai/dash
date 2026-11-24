@@ -79,6 +79,11 @@ async function buildWorkspace() {
   okOf(await c.from('crm_sequences').insert({ id: ids.sequence, workspace_id: ids.ws, name: 'Seq' }));
   okOf(await c.from('crm_sequence_steps').insert({ id: ids.step, sequence_id: ids.sequence, position: 0, channel: 'email', body: 'oi' }));
   okOf(await c.from('crm_sequence_enrollments').insert({ id: ids.enrollment, sequence_id: ids.sequence, deal_id: ids.deal }));
+  ids.contentItem = id();
+  ids.contentChannel = id();
+  const idea = query(`select id from public.content_stages where workspace_id = '${ids.ws}' and slug = 'ideas'`)[0].id;
+  okOf(await c.from('content_items').insert({ id: ids.contentItem, workspace_id: ids.ws, stage_id: idea, key: 'PEC-1', title: 'Piece' }));
+  okOf(await c.from('content_item_channels').insert({ id: ids.contentChannel, item_id: ids.contentItem, channel: 'blog', body: '' }));
   return { owner, ids, adminMember, memberMember };
 }
 
@@ -108,6 +113,10 @@ const WS_TABLES = [
   'crm_sequences',
   'crm_sequence_steps',
   'crm_sequence_enrollments',
+  'content_stages',
+  'content_counters',
+  'content_items',
+  'content_item_channels',
 ];
 
 describe.skipIf(!available)('deleting a workspace', () => {

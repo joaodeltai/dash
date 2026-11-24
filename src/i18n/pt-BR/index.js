@@ -11,5 +11,20 @@ import actionsMisc from './actions-misc.js';
 import shellUi from './shell-ui.js';
 import viewsFeatures from './views-features.js';
 import crm from './crm.js';
+import content from './content.js';
 
-export default Object.assign({}, core, pagesAccount, pagesWork, overlaysForms, overlaysMenus, actionsMain, actionsMisc, shellUi, viewsFeatures, crm, common);
+export default Object.assign(
+  {},
+  core,
+  pagesAccount,
+  pagesWork,
+  overlaysForms,
+  overlaysMenus,
+  actionsMain,
+  actionsMisc,
+  shellUi,
+  viewsFeatures,
+  crm,
+  content,
+  common,
+);

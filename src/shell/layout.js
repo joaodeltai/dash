@@ -3,7 +3,7 @@ import { tr } from '../core/i18n.js';
 import { MOD, TODAY, diffD, esc, parse } from '../core/utils.js';
 import { ic, wsLogo } from '../core/icons.js';
 import { PSTAT } from '../core/constants.js';
-import { D, S, allTasks, canCreate, mem, pColor, proj, team, teamsList, visibleProjects } from '../core/store.js';
+import { D, S, allTasks, canCreate, contentItem, mem, pColor, proj, team, teamsList, visibleProjects } from '../core/store.js';
 import { av } from '../ui/helpers.js';
 import { ROUTE_NAMES } from './render.js';
 import { skeleton } from './skeletons.js';
@@ -26,6 +26,7 @@ import { pageSettings } from '../pages/settings.js';
 import { pageStates, pageSystem } from '../pages/design-system.js';
 import { pageArchive } from '../features/archive.js';
 import { crmTabLabel, pageCrm } from '../pages/crm.js';
+import { contentTabLabel, pageContent } from '../pages/content.js';
 
 export function renderShell() {
   const u = S.ui;
@@ -52,6 +53,7 @@ export function renderPage() {
       search: pageSearch,
       overview: pageOverview,
       crm: pageCrm,
+      content: pageContent,
       projects: pageProjects,
       project: pageProject,
       tasks: pageTasks,
@@ -108,6 +110,7 @@ export function renderSidebar() {
         <div class="sgroup-h">${tr('Workspace')}</div>
         ${sItem('overview', tr('Overview'), 'layout-dashboard')}
         ${sItem('crm', tr('CRM'), 'handshake', { on: u.route === 'crm' && (u.params.tab || 'pipeline') !== 'email' })}
+        ${sItem('content', tr('Content'), 'pen-line', { on: u.route === 'content' })}
         ${sItem('crm', tr('Email'), 'mail', { tab: 'email', on: u.route === 'crm' && u.params.tab === 'email' })}
         ${sItem('projects', tr('Projects'), 'folder-kanban')}
         ${sItem('tasks', tr('Tasks'), 'list-checks')}
@@ -190,6 +193,12 @@ export function crumbs() {
   } else if (r === 'crm') {
     out.push(c(tr('CRM'), 'data-a="go" data-r="crm"', !u.params.tab || u.params.tab === 'pipeline'));
     if (u.params.tab && u.params.tab !== 'pipeline') out.push(c(crmTabLabel(u.params.tab), '', true));
+  } else if (r === 'content') {
+    out.push(c(tr('Content'), 'data-a="go" data-r="content"', !u.params.id && (!u.params.tab || u.params.tab === 'ideas')));
+    if (u.params.id) {
+      const item = contentItem(u.params.id);
+      out.push(c(item ? item.key + ' ' + item.title : tr('Piece'), '', true));
+    } else if (u.params.tab && u.params.tab !== 'ideas') out.push(c(contentTabLabel(u.params.tab), '', true));
   } else if (r === 'settings') {
     out.push(c(tr('Settings'), '', true));
   } else out.push(c(tr(ROUTE_NAMES[r] || 'Not found'), '', true));

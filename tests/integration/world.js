@@ -187,6 +187,17 @@ export async function buildWorld(cfg, run) {
   );
   await w(A.from('crm_sequence_enrollments').insert({ id: seed.enrollment, sequence_id: seed.sequence, deal_id: seed.deal }), 'seed enrollment');
 
+  seed.contentStage = query(`select id from public.content_stages where workspace_id = '${ws}' and slug = 'ideas'`)[0].id;
+  Object.assign(seed, { contentItem: id(), contentChannel: id() });
+  await w(
+    A.from('content_items').insert({ id: seed.contentItem, workspace_id: ws, stage_id: seed.contentStage, key: 'PEC-1', title: 'Seed piece' }),
+    'seed content item',
+  );
+  await w(
+    A.from('content_item_channels').insert({ id: seed.contentChannel, item_id: seed.contentItem, channel: 'linkedin', body: 'Seed' }),
+    'seed content channel',
+  );
+
   return { run, url: cfg.url, key: cfg.key, serviceKey: cfg.serviceKey, users, wsA: ws, wsB: wb.workspace_id, seed };
 }
 
