@@ -56,6 +56,11 @@ export const TABLES = [
   { name: 'crm_sequence_steps', pk: ['id'], mode: 'full' },
   { name: 'crm_activities', pk: ['id'], mode: 'full' },
   { name: 'crm_sequence_enrollments', pk: ['id'], mode: 'full' },
+  // Content: stages before items, items before the per-channel versions.
+  // The PEC key is assigned by the database; the sync engine reads it back after insert.
+  { name: 'content_stages', pk: ['id'], mode: 'full' },
+  { name: 'content_items', pk: ['id'], mode: 'full', server: ['key'], serverOn: ['key'] },
+  { name: 'content_item_channels', pk: ['id'], mode: 'full' },
   { name: 'task_favorites', pk: ['member_id', 'task_id'], mode: 'full' },
   { name: 'project_favorites', pk: ['member_id', 'project_id'], mode: 'full' },
 ];
@@ -74,6 +79,10 @@ const CRM_ACT = ['email', 'whatsapp', 'linkedin', 'call', 'meeting', 'note', 'st
 const CRM_DIR = ['inbound', 'outbound', 'internal'];
 const CRM_CHANNEL = ['email', 'whatsapp', 'linkedin', 'call'];
 const CRM_ENROLL = ['active', 'paused', 'done'];
+const CONTENT_KINDS = ['idea', 'planning', 'production', 'published'];
+const CONTENT_FORMATS = ['', 'short', 'long', 'video', 'social'];
+const CONTENT_BRANDS = ['', 'deltai', 'fync'];
+const CONTENT_CHANNELS = ['linkedin', 'substack', 'blog', 'x', 'threads', 'instagram'];
 const CRM_DECISION = ['keep', 'maybe', 'drop'];
 const CONFIDENCE_ALIAS = {
   a: 'high',
@@ -250,6 +259,9 @@ export function emptyData() {
     crmActivities: [],
     sequences: [],
     enrollments: [],
+    contentStages: [],
+    contentItems: [],
+    contentReady: true,
     crmReady: true,
     // False only when this browser loaded a database that does not have crm_research yet.
     // Writes then omit the columns from that migration, so the current pipeline keeps saving.
@@ -269,7 +281,7 @@ export function emptyData() {
            comments, activity, notifications, events, saved_views, task_favorites, project_favorites,
            member_state, profile, crm_stages, crm_companies, crm_contacts, crm_deals, crm_research,
            crm_activities, crm_sequences, crm_sequence_steps, crm_sequence_enrollments, crmReady,
-           crmProspecting, crmEmailDraft }
+           crmProspecting, crmEmailDraft, content_stages, content_items, content_item_channels, contentReady }
    ctx:  { wsId, meId, userId, workspaces }
    ===================================================================== */
 export function hydrate(rows, ctx) {
@@ -562,6 +574,38 @@ export function hydrate(rows, ctx) {
     agent: e.created_by_agent || '',
   }));
 
+  d.contentReady = rows.contentReady !== false;
+  d.contentStages = [...(rows.content_stages || [])]
+    .sort((a, b) => a.position - b.position || String(a.slug).localeCompare(String(b.slug)))
+    .map(s => ({ id: s.id, slug: s.slug, name: s.name, kind: s.kind, position: s.position, color: s.color || 'gray' }));
+  const channelsBy = groupBy(rows.content_item_channels || [], 'item_id');
+  d.contentItems = (rows.content_items || []).map(item => ({
+    id: item.id,
+    stage: item.stage_id,
+    key: item.key || '',
+    title: item.title,
+    source: item.source || '',
+    format: item.format || '',
+    brand: item.brand || '',
+    theme: item.theme || '',
+    tags: item.tags || [],
+    objective: item.objective || '',
+    audience: item.audience || '',
+    hook: item.hook || '',
+    pillar: item.pillar || '',
+    points: item.key_points || '',
+    cta: item.cta || '',
+    body: item.body || '',
+    target: item.target_on || null,
+    trello: item.trello_card_id || '',
+    order: Number(item.position) || 0,
+    created: toMs(item.created_at) || 0,
+    updated: toMs(item.updated_at) || 0,
+    channels: (channelsBy[item.id] || [])
+      .sort((a, b) => String(a.channel).localeCompare(String(b.channel)) || String(a.id).localeCompare(String(b.id)))
+      .map(ch => ({ id: ch.id, channel: ch.channel, body: ch.body || '' })),
+  }));
+
   const st = rows.member_state?.state || {};
   d.projOrder = Array.isArray(st.projOrder) ? st.projOrder.filter(x => typeof x === 'string') : [];
   d.recentSearches = Array.isArray(st.recentSearches) ? st.recentSearches.filter(x => typeof x === 'string').slice(0, 5) : [];
@@ -621,6 +665,8 @@ export function normalize(d) {
     'crmActivities',
     'sequences',
     'enrollments',
+    'contentStages',
+    'contentItems',
   ])
     if (!Array.isArray(d[k])) d[k] = [];
   if (!d.notifPrefs || typeof d.notifPrefs !== 'object') d.notifPrefs = {};
@@ -746,6 +792,31 @@ export function normalize(d) {
   }
   const sequenceIds = new Set(d.sequences.map(s => s.id));
   d.enrollments = d.enrollments.filter(e => sequenceIds.has(e.sequence) && dealIds.has(e.deal));
+
+  if (typeof d.contentReady !== 'boolean') d.contentReady = true;
+  const contentStageIds = new Set(d.contentStages.map(s => s.id));
+  d.contentItems = d.contentItems.filter(item => item && contentStageIds.has(item.stage));
+  for (const item of d.contentItems) {
+    if (!Array.isArray(item.tags)) item.tags = [];
+    item.tags = tagsOf(item.tags);
+    item.format = oneOf(item.format, CONTENT_FORMATS, '');
+    item.brand = oneOf(item.brand, CONTENT_BRANDS, '');
+    item.theme = str(item.theme, 80).trim();
+    item.target = dateOrNull(item.target);
+    if (!Array.isArray(item.channels)) item.channels = [];
+    const seenCh = new Set();
+    item.channels = item.channels.filter(ch => {
+      if (!ch || !CONTENT_CHANNELS.includes(ch.channel) || seenCh.has(ch.channel)) return false;
+      seenCh.add(ch.channel);
+      if (!ch.id) ch.id = newId();
+      ch.body = str(ch.body, 100000);
+      return true;
+    });
+  }
+  for (const s of d.contentStages) {
+    s.kind = oneOf(s.kind, CONTENT_KINDS, 'production');
+    s.color = oneOf(s.color, CRM_COLORS, 'gray');
+  }
 
   // projOrder decides which projects are listed at all: every project must be in it exactly once
   const order = [...new Set(d.projOrder.filter(id => projectIds.has(id)))];
@@ -1101,6 +1172,55 @@ export function flatten(state, ctx) {
       next_on: dateOrNull(e.nextOn),
       created_by_agent: str(e.agent, 80),
     });
+
+  // Missing migration: do not write content rows into a database that does not have the tables.
+  if (d.contentReady !== false) {
+    for (const s of d.contentStages)
+      put('content_stages', {
+        id: s.id,
+        workspace_id: ws,
+        slug: slug(s.slug).replace(/-/g, '_').slice(0, 40) || 'stage',
+        name: str(s.name, 80, 'Stage').trim() || 'Stage',
+        kind: oneOf(s.kind, CONTENT_KINDS, 'production'),
+        position: Number.isFinite(s.position) ? Math.round(s.position) : 0,
+        color: oneOf(s.color, CRM_COLORS, 'gray'),
+      });
+    for (const item of d.contentItems) {
+      put('content_items', {
+        id: item.id,
+        workspace_id: ws,
+        stage_id: item.stage,
+        // provisional: the database assigns PEC-N and the sync engine reads it back
+        key: /^PEC-\d{1,9}$/.test(item.key || '') ? item.key : 'PEC-0',
+        title: str(item.title, 200, 'Untitled').trim() || 'Untitled',
+        source: str(item.source, 500),
+        format: oneOf(item.format, CONTENT_FORMATS, ''),
+        brand: oneOf(item.brand, CONTENT_BRANDS, ''),
+        theme: str(item.theme, 80).trim(),
+        tags: tagsOf(item.tags),
+        objective: str(item.objective, 4000),
+        audience: str(item.audience, 2000),
+        hook: str(item.hook, 2000),
+        pillar: str(item.pillar, 2000),
+        key_points: str(item.points, 8000),
+        cta: str(item.cta, 1000),
+        body: str(item.body, 100000),
+        target_on: dateOrNull(item.target),
+        trello_card_id: str(item.trello, 40).trim(),
+        position: Number.isFinite(item.order) ? item.order : 0,
+        created_at: toIso(item.created) || toIso(0),
+        updated_at: toIso(item.updated) || toIso(item.created) || toIso(0),
+      });
+      for (const ch of item.channels || [])
+        put('content_item_channels', {
+          id: ch.id,
+          workspace_id: ws,
+          item_id: item.id,
+          channel: oneOf(ch.channel, CONTENT_CHANNELS, 'linkedin'),
+          body: str(ch.body, 100000),
+        });
+    }
+  }
 
   return out;
 }

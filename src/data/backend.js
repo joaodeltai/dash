@@ -5,11 +5,11 @@
 import { AUTH_PROVIDERS, MAX_FILE_BYTES, SUPABASE_KEY, SUPABASE_URL, ctx, isConfigured, sb, urlIntent } from './supabase.js';
 import { TABLE, emptyData, flatten, fmtBytes, hydrate, keyOf, newId, stable } from './mappers.js';
 import { createSync } from './sync.js';
-import { S, cachePrefs, company, contact, deal, mergePrefs, sequence, setPersist, task } from '../core/store.js';
+import { S, cachePrefs, company, contact, contentItem, deal, mergePrefs, sequence, setPersist, task } from '../core/store.js';
 import { tr } from '../core/i18n.js';
 import { fileType } from '../ui/helpers.js';
 import { toast } from '../ui/toast.js';
-import { openUrl, render } from '../shell/render.js';
+import { go, openUrl, render } from '../shell/render.js';
 
 export { AUTH_PROVIDERS, MAX_FILE_BYTES, ctx, isConfigured };
 const WS_KEY = 'dash.ws';
@@ -66,6 +66,18 @@ export const sync = createSync({
   /* The database assigns each task's key (unique in the workspace). The key shown right after creating a task is
      provisional; this puts the real one in its place, usually the same. */
   onServerValues(table, rows) {
+    if (table === 'content_items') {
+      let changed = false;
+      for (const row of rows) {
+        const item = contentItem(row.id);
+        if (item && row.key && item.key !== row.key) {
+          item.key = row.key;
+          changed = true;
+        }
+      }
+      if (changed) render();
+      return;
+    }
     if (table !== 'tasks') return;
     let changed = false;
     for (const row of rows) {
@@ -109,7 +121,63 @@ const stateOf = () => ({ data: S.data, prefs: S.prefs, views: S.views });
 let booted = false;
 let entering = null;
 
+/* Dev-only fixture so the content screens can be exercised without a signed-in workspace.
+   Production builds drop this branch (import.meta.env.DEV is false). */
+function bootContentPreview() {
+  setPersist(() => {});
+  const ws = '00000000-0000-4000-8000-000000000001';
+  const me = '00000000-0000-4000-8000-000000000002';
+  const spec = [
+    ['ideas', 'Ideas', 'idea', 0, 'gray'],
+    ['planning', 'Planning', 'planning', 1, 'blue'],
+    ['unload', 'Unload', 'production', 2, 'violet'],
+    ['structure', 'Structure', 'production', 3, 'teal'],
+    ['polish', 'Polish', 'production', 4, 'amber'],
+    ['record', 'Record', 'production', 5, 'orange'],
+    ['edit', 'Edit', 'production', 6, 'rose'],
+    ['ready', 'Ready to post', 'production', 7, 'blue'],
+    ['posted', 'Posted', 'published', 8, 'green'],
+  ];
+  const data = emptyData();
+  data.ws = { id: ws, name: 'GR8 Studio', url: 'gr8', c: '#2F2E2A' };
+  data.workspaces = [{ id: ws, name: 'GR8 Studio', c: '#2F2E2A', role: 'Owner' }];
+  data.me = me;
+  data.members = [
+    {
+      id: me,
+      name: 'João',
+      email: 'joao@gr8.studio',
+      role: 'Owner',
+      team: '',
+      title: '',
+      c: '#6B7280',
+      status: 'active',
+      last: 0,
+      tz: 'America/Sao_Paulo',
+      userId: me,
+    },
+  ];
+  data.contentStages = spec.map(([slug, name, kind, position, color], i) => ({
+    id: `00000000-0000-4000-8000-00000000010${i}`,
+    slug,
+    name,
+    kind,
+    position,
+    color,
+  }));
+  data.contentItems = [];
+  data.contentReady = true;
+  S.data = data;
+  S.prefs = { ...S.prefs, lang: 'pt-BR', name: 'João' };
+  Object.assign(S.ui, { booting: false, bootError: null, loading: false, auth: null, offline: false, modals: [], history: [] });
+  go('content', { tab: 'ideas' }, { replace: true });
+}
+
 export async function boot(initialRoute) {
+  if (import.meta.env.DEV && new URLSearchParams(location.search).get('preview') === 'content') {
+    bootContentPreview();
+    return;
+  }
   setPersist(() => sync.schedule());
   if (!isConfigured) {
     S.ui.booting = false;
@@ -332,6 +400,7 @@ async function fetchRows(wsId) {
     fetchAll('project_favorites', inWs),
   ]);
   const crm = await fetchCrm(wsId);
+  const content = await fetchContent(wsId);
   const mine = members.find(m => m.user_id === ctx.userId && m.status === 'active');
   if (!mine) throw new BackendError(tr('You are no longer a member of this workspace.'), { code: 'NOT_A_MEMBER', kind: 'rejected' });
   const member_state = unwrap(await sb.from('member_state').select('*').eq('member_id', mine.id).maybeSingle());
@@ -362,6 +431,8 @@ async function fetchRows(wsId) {
       crmReady: crm.ready,
       crmProspecting: crm.prospecting,
       crmEmailDraft: crm.emailDraft,
+      ...content.rows,
+      contentReady: content.ready,
     },
   };
 }
@@ -425,6 +496,26 @@ async function fetchCrm(wsId) {
   }
 }
 
+/* Content tables ship in their own migration. Until it is applied, a missing relation must not
+   take the rest of the workspace down with it. */
+const CONTENT_TABLES = [
+  ['content_stages', ['position', 'id']],
+  ['content_items', ['created_at', 'id']],
+  ['content_item_channels', ['channel', 'id']],
+];
+async function fetchContent(wsId) {
+  const inWs = q => q.eq('workspace_id', wsId);
+  const empty = Object.fromEntries(CONTENT_TABLES.map(([name]) => [name, []]));
+  try {
+    const lists = await Promise.all(CONTENT_TABLES.map(([name, order]) => fetchAll(name, inWs, order)));
+    return { ready: true, rows: Object.fromEntries(CONTENT_TABLES.map(([name], i) => [name, lists[i]])) };
+  } catch (err) {
+    if (!missingTable(err)) throw err;
+    console.warn('[content] schema not installed yet; the content area stays hidden until the migration is applied.');
+    return { ready: false, rows: empty };
+  }
+}
+
 /* Puts freshly fetched rows in memory and makes them the new sync baseline. */
 function applyRows({ mine, rows }, wsId) {
   ctx.wsId = wsId;
@@ -464,7 +555,11 @@ export async function openWorkspace(wsId, { route } = {}) {
   } catch {
     /* storage blocked: the workspace choice just won't be remembered */
   }
-  subscribe(wsId, { crm: loaded.rows.crmReady !== false, prospecting: loaded.rows.crmProspecting !== false });
+  subscribe(wsId, {
+    crm: loaded.rows.crmReady !== false,
+    prospecting: loaded.rows.crmProspecting !== false,
+    content: loaded.rows.contentReady !== false,
+  });
   void sb.rpc('touch_presence', { ws: wsId });
   Object.assign(S.ui, {
     booting: false,
@@ -592,12 +687,15 @@ const RT_TABLES = [
   'crm_sequences',
   'crm_sequence_steps',
   'crm_sequence_enrollments',
+  'content_stages',
+  'content_items',
+  'content_item_channels',
 ];
 let channel = null;
 let rtQueue = [];
 let rtTimer = null;
 
-function subscribe(wsId, { crm = true, prospecting = true } = {}) {
+function subscribe(wsId, { crm = true, prospecting = true, content = true } = {}) {
   unsubscribe();
   channel = sb.channel('ws:' + wsId);
   const queue = table => payload => {
@@ -605,7 +703,7 @@ function subscribe(wsId, { crm = true, prospecting = true } = {}) {
     clearTimeout(rtTimer);
     rtTimer = setTimeout(drainRealtime, 700);
   };
-  const tables = RT_TABLES.filter(t => (crm || !t.startsWith('crm_')) && (prospecting || t !== 'crm_research'));
+  const tables = RT_TABLES.filter(t => (crm || !t.startsWith('crm_')) && (prospecting || t !== 'crm_research') && (content || !t.startsWith('content_')));
   for (const table of tables) {
     const filter = table === 'workspaces' ? `id=eq.${wsId}` : `workspace_id=eq.${wsId}`;
     channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table, filter }, queue(table));

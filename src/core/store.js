@@ -133,6 +133,9 @@ export const company = id => (D().companies || []).find(c => c.id === id);
 export const contact = id => (D().contacts || []).find(c => c.id === id);
 export const deal = id => (D().deals || []).find(d => d.id === id);
 export const sequence = id => (D().sequences || []).find(s => s.id === id);
+export const contentStages = () => [...(D().contentStages || [])].sort((a, b) => a.position - b.position);
+export const contentStage = id => (D().contentStages || []).find(s => s.id === id);
+export const contentItem = id => (D().contentItems || []).find(x => x.id === id);
 export const pColor = p => PCOLORS[p?.color] || PCOLORS.slate;
 /* ---------- roles ----------
    The database enforces permissions (RLS); these only decide what the interface offers. */

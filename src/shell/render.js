@@ -3,7 +3,7 @@
    ===================================================================== */
 import { tr } from '../core/i18n.js';
 import { $, $$ } from '../core/utils.js';
-import { D, S, canSee, mem, proj, task, team, touch } from '../core/store.js';
+import { D, S, canSee, contentItem, mem, proj, task, team, touch } from '../core/store.js';
 import { applyPrefs } from '../core/theme.js';
 import { enhanceSelects, selectMenu } from '../ui/select.js';
 import { renderShell } from './layout.js';
@@ -13,6 +13,7 @@ import { renderLayer } from '../overlays/drawer.js';
 import { placePop } from '../overlays/popovers.js';
 import { renderAuth, renderBoot } from '../pages/auth.js';
 import { crmTabLabel } from '../pages/crm.js';
+import { contentTabLabel } from '../pages/content.js';
 import { parseHash as parseRoute, routeHash } from '../core/hash-route.js';
 
 export const ROUTE_NAMES = {
@@ -37,6 +38,7 @@ export const ROUTE_NAMES = {
   ...(import.meta.env.DEV ? { system: 'Design system', states: 'System states' } : {}),
   archive: 'Archive',
   crm: 'CRM',
+  content: 'Content',
 };
 export const ROUTE_ICONS = {
   home: 'house',
@@ -58,16 +60,18 @@ export const ROUTE_ICONS = {
   states: 'layers',
   archive: 'archive',
   crm: 'handshake',
+  content: 'pen-line',
 };
 
 export function go(route, params = {}, opt = {}) {
   if (route === 'project' && !params.tab) params.tab = 'board';
   if (route === 'crm' && !params.tab) params.tab = 'pipeline';
+  if (route === 'content' && !params.id && !params.tab) params.tab = 'ideas';
   if (!opt.back) S.ui.history.push({ route: S.ui.route, params: S.ui.params });
   const same = S.ui.route === route && JSON.stringify(S.ui.params) === JSON.stringify(params);
   S.ui.route = route;
   S.ui.params = params;
-  if (route === 'crm') S.ui.drawer = null;
+  if (route === 'crm' || route === 'content') S.ui.drawer = null;
   else {
     S.ui.deal = null;
     S.ui.crmRecord = null;
@@ -128,7 +132,8 @@ export function openUrl(hash, opt = {}) {
   if (
     (target.route === 'project' && !proj(target.params.id)) ||
     (target.route === 'member' && !mem(target.params.id)) ||
-    (target.route === 'team' && !team(target.params.id))
+    (target.route === 'team' && !team(target.params.id)) ||
+    (target.route === 'content' && target.params.id && !contentItem(target.params.id))
   ) {
     home();
     return tr("That page doesn't exist or you don't have access to it.");
@@ -184,6 +189,10 @@ export function pageTitle() {
   if (u.route === 'member' && mem(u.params.id)) t = mem(u.params.id).name;
   if (u.route === 'team' && team(u.params.id)) t = team(u.params.id).name;
   if (u.route === 'crm') t = `${tr('CRM')} · ${crmTabLabel(u.params.tab)}`;
+  if (u.route === 'content') {
+    const item = u.params.id ? contentItem(u.params.id) : null;
+    t = item ? `${item.key} · ${item.title}` : `${tr('Content')} · ${contentTabLabel(u.params.tab)}`;
+  }
   return `${t} · ${D().ws.name}`;
 }
 /* Anything clickable is keyboard-reachable: non-native [data-a] controls get a role and a tab stop. */

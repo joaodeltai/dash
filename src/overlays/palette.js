@@ -30,6 +30,8 @@ export function commands() {
     },
     { id: 'c-home', name: tr('Go to Home'), nav: true, icon: 'house', kbd: 'G H', run: () => go('home') },
     { id: 'c-crm', name: tr('Go to CRM'), nav: true, icon: 'handshake', kbd: 'G D', run: () => go('crm') },
+    { id: 'c-content', name: tr('Go to Content'), nav: true, icon: 'pen-line', kbd: 'G O', run: () => go('content') },
+    { id: 'c-idea', name: tr('New idea'), icon: 'lightbulb', run: () => go('content', { tab: 'ideas' }) },
     { id: 'c-mail', name: tr('Go to Email settings'), nav: true, icon: 'mail', run: () => go('crm', { tab: 'email' }) },
     { id: 'c-inbox', name: tr('Go to Inbox'), nav: true, icon: 'inbox', kbd: 'G I', run: () => go('inbox') },
     { id: 'c-my', name: tr('Go to My Tasks'), nav: true, icon: 'circle-check', kbd: 'G T', run: () => go('mytasks') },

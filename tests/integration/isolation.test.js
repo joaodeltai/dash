@@ -31,6 +31,10 @@ const spec = () => ({
   crm_sequences: { key: 'id', value: seed().sequence, patch: { name: 'hacked' } },
   crm_sequence_steps: { key: 'id', value: seed().step, patch: { body: 'hacked' } },
   crm_sequence_enrollments: { key: 'id', value: seed().enrollment, patch: { status: 'paused' } },
+  content_stages: { key: 'id', value: seed().contentStage, patch: { name: 'hacked' } },
+  content_counters: { key: 'workspace_id', value: world.wsA, patch: { seq: 99 } },
+  content_items: { key: 'id', value: seed().contentItem, patch: { title: 'hacked' } },
+  content_item_channels: { key: 'id', value: seed().contentChannel, patch: { body: 'hacked' } },
 });
 const fingerprint = (table, key, value) => query(`select md5(t::text) as h from public.${table} t where ${key} = '${value}' order by 1`).map(r => r.h);
 
@@ -109,6 +113,10 @@ describe.skipIf(!available)('isolation between workspaces', () => {
       crm_sequences: { workspace_id: world.wsA, name: 'planted' },
       crm_sequence_steps: { sequence_id: seed().sequence, position: 9, channel: 'email', body: 'planted' },
       crm_sequence_enrollments: { sequence_id: seed().sequence, deal_id: seed().deal },
+      content_stages: { workspace_id: world.wsA, slug: 'planted', name: 'Planted', kind: 'production', position: 40, color: 'gray' },
+      content_counters: { workspace_id: world.wsA, seq: 1 },
+      content_items: { workspace_id: world.wsA, title: 'planted', stage_id: seed().contentStage, key: 'PEC-9' },
+      content_item_channels: { item_id: seed().contentItem, channel: 'x', body: 'planted' },
     });
     it.each([
       'teams',
@@ -135,6 +143,10 @@ describe.skipIf(!available)('isolation between workspaces', () => {
       'crm_sequences',
       'crm_sequence_steps',
       'crm_sequence_enrollments',
+      'content_stages',
+      'content_counters',
+      'content_items',
+      'content_item_channels',
     ])('%s', async table => {
       const before = query(`select count(*)::int as n from public.${table}`)[0].n;
       denied(await as('b').from(table).insert(attempts()[table]));

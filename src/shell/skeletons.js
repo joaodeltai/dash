@@ -25,7 +25,7 @@ export function skeleton() {
     const ph = `<div class="proj-h"><div class="t">${sk('36px', 36, 'border-radius:9px')}${sk('200px', 18)}</div><div class="row" style="gap:16px;padding-bottom:10px">${sk('60px', 10)}${sk('50px', 10)}${sk('50px', 10)}${sk('60px', 10)}</div></div><div class="toolbar">${sk('200px', 22)}</div>`;
     return `<div class="page flush" aria-busy="true">${ph}${tab === 'board' ? skBoard() : `<div style="padding:12px 20px">${skRows(10)}</div>`}</div>`;
   }
-  if (r === 'crm') body = skBoard();
+  if (r === 'crm' || r === 'content') body = skBoard();
   else if (r === 'projects') body = skCards(6);
   else if (r === 'home' || r === 'overview')
     body = `<div class="stats" style="margin-bottom:16px">${Array.from({ length: 4 }, () => `<div class="stat">${sk('80px', 10)}${sk('44px', 20)}</div>`).join('')}</div><div class="grid2"><div class="panel" style="padding:14px">${skRows(6)}</div><div class="panel" style="padding:14px">${skRows(6)}</div></div>`;

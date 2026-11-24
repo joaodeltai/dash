@@ -1,0 +1,187 @@
+/* Content area. The board reuses the kanban; this file covers the ideas bank, the brief and the piece editor. */
+.content-page {
+  min-height: 0;
+}
+.content-tabs {
+  padding: 0 var(--gutter);
+  flex-shrink: 0;
+}
+.content-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.content-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px var(--gutter) 0;
+  flex-shrink: 0;
+}
+.content-tools .select {
+  height: 28px;
+  width: auto;
+  font-size: 12.5px;
+}
+.content-board {
+  padding-top: 12px;
+}
+.content-panel {
+  margin: 14px var(--gutter);
+}
+.idea-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px var(--gutter) 0;
+  flex-shrink: 0;
+}
+.idea-capture-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.idea-capture-row .input,
+.idea-capture-row .select {
+  flex: 1 1 180px;
+  min-width: 0;
+  width: auto;
+  height: 32px;
+}
+.idea-capture-row .btn {
+  flex: 0 0 auto;
+}
+.idea-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.idea-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 14px var(--gutter) 28px;
+  overflow: auto;
+}
+.idea-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  cursor: pointer;
+}
+.idea-card:hover {
+  border-color: var(--border-strong);
+}
+.idea-open {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  cursor: pointer;
+}
+.idea-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.idea-card .key,
+.content-row .key {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.idea-source {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.content-row {
+  cursor: pointer;
+}
+.piececard .title {
+  font-weight: 550;
+}
+.piececard .deal-tags {
+  margin-top: 6px;
+}
+.content-piece {
+  max-width: 1180px;
+}
+.content-piece .content-tabs {
+  padding: 0;
+  margin-bottom: 8px;
+}
+.piece-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+.piece-brief,
+.piece-editor {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.piece-title {
+  font-size: 18px;
+  font-weight: 600;
+  height: 40px;
+}
+.piece-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.piece-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.piece-inline .input {
+  flex: 1;
+}
+.piece-ch-h {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+.piece-ch-note {
+  margin: 0;
+  font-size: 12.5px;
+}
+.piece-channel {
+  border-top: 1px solid var(--divider);
+  padding-top: 8px;
+}
+.piece-channel summary {
+  cursor: pointer;
+  font-weight: 550;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.content-piece .key {
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  .piece-layout,
+  .piece-meta {
+    grid-template-columns: 1fr;
+  }
+}

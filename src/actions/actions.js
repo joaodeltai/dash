@@ -3,7 +3,24 @@
    ===================================================================== */
 import { $, $$, TODAY, addD, dOff, esc, fmtDate, iso, parse, sanitizeHtml, uid } from '../core/utils.js';
 import { PR, PSTAT, ST } from '../core/constants.js';
-import { D, S, allTasks, canCreate, canManage, canSee, commentsOf, logAct, me, mem, proj, save, task, tasksOf, visibleProjects } from '../core/store.js';
+import {
+  D,
+  S,
+  allTasks,
+  canCreate,
+  canManage,
+  canSee,
+  commentsOf,
+  contentItem,
+  logAct,
+  me,
+  mem,
+  proj,
+  save,
+  task,
+  tasksOf,
+  visibleProjects,
+} from '../core/store.js';
 import { FORMER_MEMBER, fileType, fsize } from '../ui/helpers.js';
 import { MAX_MB, retryImage } from '../ui/file-urls.js';
 import { MAX_FILE_BYTES, copyStoredFile, discardUploads, fileUrl, uploadFile } from '../data/backend.js';
@@ -194,7 +211,8 @@ A.go = el => {
   else if (r === 'project') p.tab = S.prefs.defaultTab || 'board';
   if (el.dataset.sec) p.sec = el.dataset.sec;
   S.ui.palette = null;
-  const tabOnly = r === 'project' && S.ui.route === 'project' && S.ui.params.id === p.id;
+  const tabOnly =
+    (r === 'project' && S.ui.route === 'project' && S.ui.params.id === p.id) || (r === 'content' && S.ui.route === 'content' && !p.id && !S.ui.params.id);
   go(r, p, { tab: tabOnly });
 };
 A.back = () => {
@@ -1129,7 +1147,34 @@ A.react = el => {
   });
 };
 
-/* rich text description */
+/* rich text description (tasks) and the content piece body share this toolbar */
+function rteEditor(btn) {
+  const id = btn.closest('[aria-controls]')?.getAttribute('aria-controls');
+  return (id && document.getElementById(id)) || btn.closest('.dsec')?.querySelector('[data-rte]') || $('#d-desc');
+}
+function commitRte(ed) {
+  if (!ed) return;
+  const html = sanitizeHtml(ed.innerHTML);
+  if (ed.dataset.rteKind === 'content') {
+    const item = contentItem(ed.dataset.rte);
+    if (!item) return;
+    const channel = ed.dataset.rteChannel;
+    if (channel) {
+      const row = (item.channels || []).find(c => c.channel === channel);
+      if (!row || row.body === html) return;
+      row.body = html;
+    } else if (item.body === html) return;
+    else item.body = html;
+    item.updated = Date.now();
+    save();
+    return;
+  }
+  const t = task(ed.dataset.rte);
+  if (!t || t.desc === html) return;
+  t.desc = html;
+  t.updated = Date.now();
+  save();
+}
 document.addEventListener('mousedown', e => {
   const b = e.target.closest('[data-cmd]');
   if (!b) return;
@@ -1140,14 +1185,7 @@ document.addEventListener('mousedown', e => {
     if (/^https?:\/\//.test(s)) document.execCommand('createLink', false, s);
     else toast(tr('Select a URL starting with https:// to turn it into a link'), { kind: 'info' });
   } else document.execCommand(cmd, false, arg ? `<${arg}>` : null);
-  const ed = $('#d-desc');
-  if (ed) {
-    const t = task(ed.dataset.rte);
-    if (t) {
-      t.desc = sanitizeHtml(ed.innerHTML);
-      save();
-    }
-  }
+  commitRte(rteEditor(b));
 });
 /* Pasted or dropped HTML is cleaned before it reaches the editor, so markup copied from elsewhere never runs here. */
 const rteInsert = (e, data) => {
@@ -1167,13 +1205,7 @@ document.addEventListener('drop', e => {
 });
 document.addEventListener('input', e => {
   const ed = e.target.closest?.('[data-rte]');
-  if (!ed) return;
-  const t = task(ed.dataset.rte);
-  if (t) {
-    t.desc = sanitizeHtml(ed.innerHTML);
-    t.updated = Date.now();
-    save();
-  }
+  if (ed) commitRte(ed);
 });
 
 /* selection & bulk */

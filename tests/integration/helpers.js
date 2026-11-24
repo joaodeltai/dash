@@ -37,6 +37,10 @@ export const ALL_TABLES = [
   'crm_sequences',
   'crm_sequence_steps',
   'crm_sequence_enrollments',
+  'content_stages',
+  'content_counters',
+  'content_items',
+  'content_item_channels',
 ];
 
 export const id = () => randomUUID();
